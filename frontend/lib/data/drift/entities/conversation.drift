@@ -1,0 +1,10 @@
+CREATE TABLE conversations (
+  id TEXT PRIMARY KEY NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT,
+  created_at INTEGER NOT NULL, -- Unix timestamp
+  updated_at INTEGER NOT NULL, -- Unix timestamp
+  is_group BOOLEAN NOT NULL DEFAULT 0,
+  last_message_at INTEGER,
+  is_synced BOOLEAN NOT NULL DEFAULT 0
+) AS Conversation;

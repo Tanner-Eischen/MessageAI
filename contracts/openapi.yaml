@@ -1,5 +1,308 @@
 ﻿openapi: 3.1.0
-info: 
+info:
   title: MessageAI API
-  version: 0.0.1
-paths: {}
+  version: 0.2.0
+  description: Real-time messaging API with end-to-end encrypted conversations and media support
+  contact:
+    name: MessageAI Team
+servers:
+  - url: http://localhost:54321/rest/v1
+    description: Local Supabase development
+  - url: https://api.messageai.app/rest/v1
+    description: Production API
+
+paths:
+  /v1/messages.send:
+    post:
+      summary: Send a message to a conversation
+      description: Creates a new message in a conversation with optional media attachment. Idempotent operation using message ID.
+      tags:
+        - Messages
+      operationId: sendMessage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MessagePayload'
+      responses:
+        '200':
+          description: Message sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageResponse'
+        '400':
+          description: Invalid request
+        '401':
+          description: Unauthorized
+        '409':
+          description: Message already exists (idempotent)
+
+  /v1/receipts.ack:
+    post:
+      summary: Acknowledge message receipts
+      description: Batch update receipt status (delivered/read) for multiple messages
+      tags:
+        - Receipts
+      operationId: acknowledgeReceipts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReceiptPayload'
+      responses:
+        '200':
+          description: Receipts acknowledged successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  count:
+                    type: integer
+                    description: Number of receipts updated
+        '400':
+          description: Invalid request
+        '401':
+          description: Unauthorized
+
+components:
+  schemas:
+    # ========================================================================
+    # Message Schemas
+    # ========================================================================
+    MessagePayload:
+      type: object
+      description: Request payload for sending a message
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique message ID (client-generated for idempotency)
+        conversation_id:
+          type: string
+          format: uuid
+          description: ID of the target conversation
+        body:
+          type: string
+          description: Message content (text)
+          minLength: 1
+        media_url:
+          type: string
+          format: uri
+          nullable: true
+          description: Optional URL to attached media (image, video, file)
+      required:
+        - id
+        - conversation_id
+        - body
+
+    MessageResponse:
+      type: object
+      description: Server response after sending a message
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Message ID
+        conversation_id:
+          type: string
+          format: uuid
+          description: Conversation ID
+        sender_id:
+          type: string
+          format: uuid
+          description: ID of message sender
+        body:
+          type: string
+          description: Message content
+        media_url:
+          type: string
+          format: uri
+          nullable: true
+          description: Media attachment URL if present
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when message was created
+        server_time:
+          type: string
+          format: date-time
+          description: Server timestamp for synchronization
+      required:
+        - id
+        - conversation_id
+        - sender_id
+        - body
+        - created_at
+        - server_time
+
+    # ========================================================================
+    # Receipt Schemas
+    # ========================================================================
+    ReceiptPayload:
+      type: object
+      description: Request payload for acknowledging message receipts
+      properties:
+        message_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: List of message IDs to acknowledge
+          minItems: 1
+        status:
+          type: string
+          enum:
+            - delivered
+            - read
+          description: Status to mark messages as
+      required:
+        - message_ids
+        - status
+
+    MessageReceipt:
+      type: object
+      description: Message receipt status
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Receipt ID
+        message_id:
+          type: string
+          format: uuid
+          description: Message ID
+        user_id:
+          type: string
+          format: uuid
+          description: User who received/read the message
+        status:
+          type: string
+          enum:
+            - delivered
+            - read
+          description: Receipt status
+        at:
+          type: string
+          format: date-time
+          description: Timestamp of the receipt
+      required:
+        - id
+        - message_id
+        - user_id
+        - status
+        - at
+
+    # ========================================================================
+    # Conversation Schemas
+    # ========================================================================
+    Conversation:
+      type: object
+      description: Messaging conversation (1:1 or group)
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Conversation ID
+        title:
+          type: string
+          nullable: true
+          description: Conversation title (for groups)
+        description:
+          type: string
+          nullable: true
+          description: Conversation description
+        is_group:
+          type: boolean
+          description: Whether this is a group conversation
+        created_by:
+          type: string
+          format: uuid
+          description: User ID who created the conversation
+        created_at:
+          type: string
+          format: date-time
+          description: Creation timestamp
+        updated_at:
+          type: string
+          format: date-time
+          description: Last update timestamp
+      required:
+        - id
+        - is_group
+        - created_by
+        - created_at
+        - updated_at
+
+    ConversationParticipant:
+      type: object
+      description: User participation in a conversation
+      properties:
+        id:
+          type: string
+          format: uuid
+        conversation_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        joined_at:
+          type: string
+          format: date-time
+        last_read_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+        - id
+        - conversation_id
+        - user_id
+        - joined_at
+
+    # ========================================================================
+    # Profile Schemas
+    # ========================================================================
+    Profile:
+      type: object
+      description: User profile
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        username:
+          type: string
+          description: Unique username
+        display_name:
+          type: string
+          nullable: true
+          description: Display name
+        avatar_url:
+          type: string
+          format: uri
+          nullable: true
+          description: Avatar image URL
+        bio:
+          type: string
+          nullable: true
+          description: User bio
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - user_id
+        - username
+        - created_at
+        - updated_at

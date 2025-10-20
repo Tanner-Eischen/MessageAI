@@ -1,0 +1,45 @@
+{
+  "$id": "receipt_inserted.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Receipt Inserted Event",
+  "description": "Event emitted when a message receipt (read/delivered status) is recorded (via database trigger)",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique receipt identifier"
+    },
+    "message_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "ID of the message this receipt is for"
+    },
+    "user_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "ID of the user who received/read the message"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "delivered",
+        "read"
+      ],
+      "description": "Receipt status: 'delivered' = message received, 'read' = message read by user"
+    },
+    "at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp when the receipt was recorded"
+    }
+  },
+  "required": [
+    "id",
+    "message_id",
+    "user_id",
+    "status",
+    "at"
+  ],
+  "additionalProperties": false
+}
