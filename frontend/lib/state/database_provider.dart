@@ -2,6 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:messageai/data/drift/app_db.dart';
 import 'package:messageai/data/drift/daos/conversation_dao.dart';
 import 'package:messageai/data/drift/daos/message_dao.dart';
+import 'package:messageai/data/drift/daos/participant_dao.dart';
+import 'package:messageai/data/drift/daos/receipt_dao.dart';
 import 'package:messageai/data/drift/daos/pending_outbox_dao.dart';
 
 /// Provides the main database instance
@@ -19,6 +21,18 @@ final conversationDaoProvider = Provider<ConversationDao>((ref) {
 final messageDaoProvider = Provider<MessageDao>((ref) {
   final db = ref.watch(appDbProvider);
   return MessageDao(db);
+});
+
+/// Provides the ParticipantDao
+final participantDaoProvider = Provider<ParticipantDao>((ref) {
+  final db = ref.watch(appDbProvider);
+  return ParticipantDao(db);
+});
+
+/// Provides the ReceiptDao
+final receiptDaoProvider = Provider<ReceiptDao>((ref) {
+  final db = ref.watch(appDbProvider);
+  return ReceiptDao(db);
 });
 
 /// Provides the PendingOutboxDao

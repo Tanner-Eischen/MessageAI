@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:messageai/core/env.dart';
 import 'package:messageai/data/remote/supabase_client.dart';
 import 'package:messageai/data/drift/app_db.dart';
+import 'package:messageai/state/notification_providers.dart';
 import 'package:messageai/app.dart';
 
 void main() async {
@@ -23,8 +24,21 @@ void main() async {
 
   // Run the app with Riverpod provider scope
   runApp(
-    const ProviderScope(
-      child: MessageAIApp(),
+    ProviderScope(
+      child: _AppWithNotifications(),
     ),
   );
+}
+
+/// Wrapper widget to initialize notifications after ProviderScope
+class _AppWithNotifications extends ConsumerWidget {
+  const _AppWithNotifications();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Initialize notifications on app start
+    ref.watch(notificationInitializerProvider);
+
+    return const MessageAIApp();
+  }
 }

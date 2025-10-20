@@ -1,10 +1,12 @@
 ﻿openapi: 3.1.0
-info:
+info: 
   title: MessageAI API
-  version: 0.2.0
+  version: 1.0.0
   description: Real-time messaging API with end-to-end encrypted conversations and media support
   contact:
     name: MessageAI Team
+  license:
+    name: Proprietary
 servers:
   - url: http://localhost:54321/rest/v1
     description: Local Supabase development
@@ -65,6 +67,56 @@ paths:
                   count:
                     type: integer
                     description: Number of receipts updated
+        '400':
+          description: Invalid request
+        '401':
+          description: Unauthorized
+
+  /v1/create_group:
+    post:
+      summary: Create a group conversation
+      description: Create a group conversation with multiple members
+      tags:
+        - Groups
+      operationId: createGroup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGroupPayload'
+      responses:
+        '200':
+          description: Group created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupResponse'
+        '400':
+          description: Invalid request
+        '401':
+          description: Unauthorized
+
+  /v1/push_notify:
+    post:
+      summary: Send push notifications
+      description: Send push notifications to inactive participants
+      tags:
+        - Notifications
+      operationId: pushNotify
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PushNotifyPayload'
+      responses:
+        '200':
+          description: Notifications sent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PushNotifyResponse'
         '400':
           description: Invalid request
         '401':
@@ -199,6 +251,136 @@ components:
         - at
 
     # ========================================================================
+    # Group Schemas
+    # ========================================================================
+    CreateGroupPayload:
+      type: object
+      description: Request payload for creating a group
+      properties:
+        title:
+          type: string
+          description: Group name (1-255 characters)
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+          description: Group description
+        member_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: User IDs to add (1-500)
+          minItems: 1
+      required:
+        - title
+        - member_ids
+
+    GroupResponse:
+      type: object
+      description: Group creation response
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        is_group:
+          type: boolean
+        created_by:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        member_count:
+          type: integer
+        members:
+          type: array
+          items:
+            type: object
+            properties:
+              user_id:
+                type: string
+                format: uuid
+              joined_at:
+                type: string
+                format: date-time
+      required:
+        - id
+        - title
+        - is_group
+        - created_by
+        - created_at
+        - member_count
+
+    # ========================================================================
+    # Notification Schemas
+    # ========================================================================
+    PushNotifyPayload:
+      type: object
+      description: Request payload for push notifications
+      properties:
+        conversation_id:
+          type: string
+          format: uuid
+          description: Target conversation
+        message_id:
+          type: string
+          format: uuid
+          description: Message being notified
+        sender_id:
+          type: string
+          format: uuid
+          description: Message sender
+        sender_name:
+          type: string
+          description: Display name of sender
+        title:
+          type: string
+          nullable: true
+          description: Notification title
+        body:
+          type: string
+          nullable: true
+          description: Notification body
+      required:
+        - conversation_id
+        - message_id
+        - sender_id
+        - sender_name
+
+    PushNotifyResponse:
+      type: object
+      description: Push notification response
+      properties:
+        success:
+          type: boolean
+        message_id:
+          type: string
+          format: uuid
+        notifications_sent:
+          type: integer
+        recipients:
+          type: array
+          items:
+            type: object
+            properties:
+              user_id:
+                type: string
+                format: uuid
+              device_count:
+                type: integer
+      required:
+        - success
+        - message_id
+        - notifications_sent
+
+    # ========================================================================
     # Conversation Schemas
     # ========================================================================
     Conversation:
@@ -306,3 +488,37 @@ components:
         - username
         - created_at
         - updated_at
+
+    Device:
+      type: object
+      description: User device for push notifications
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        fcm_token:
+          type: string
+          description: Firebase Cloud Messaging token
+        platform:
+          type: string
+          enum:
+            - ios
+            - android
+            - web
+          description: Device platform
+        last_seen:
+          type: string
+          format: date-time
+          description: Last activity timestamp
+        created_at:
+          type: string
+          format: date-time
+      required:
+        - id
+        - user_id
+        - fcm_token
+        - platform
+        - created_at
