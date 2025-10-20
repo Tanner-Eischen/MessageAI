@@ -1,0 +1,12 @@
+{
+  "name": "messageai-contracts",
+  "version": "0.1.0",
+  "scripts": {
+    "validate": "openapi-generator-cli validate -i openapi.yaml && ajv -s events/*.json",
+    "gen:dart": "openapi-generator-cli generate -g dart-dio -i openapi.yaml -o ../frontend/lib/gen/api --additional-properties=pubName=message_ai_client"
+  },
+  "devDependencies": {
+    "@openapitools/openapi-generator-cli": "^2.9.0",
+    "ajv-cli": "^5.0.0"
+  }
+}
