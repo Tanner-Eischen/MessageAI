@@ -1,0 +1,43 @@
+@startuml ERD
+title MessageAI Simplified ERD
+entity "profiles" {
+  *id : uuid [PK]
+  --
+  display_name : text
+  avatar_url : text
+  last_seen : timestamptz
+}
+entity "conversations" {
+  *id : uuid [PK]
+  --
+  title : text
+  is_group : boolean
+  created_at : timestamptz
+}
+entity "conversation_participants" {
+  *conversation_id : uuid [PK, FK -> conversations.id]
+  *user_id : uuid [PK, FK -> profiles.id]
+  role : text
+  joined_at : timestamptz
+}
+entity "messages" {
+  *id : uuid [PK]
+  conversation_id : uuid [FK -> conversations.id]
+  sender_id : uuid [FK -> profiles.id]
+  body : text
+  media_url : text
+  created_at : timestamptz
+}
+entity "message_receipts" {
+  *message_id : uuid [PK, FK -> messages.id]
+  *user_id : uuid [PK, FK -> profiles.id]
+  status : text
+  at : timestamptz
+}
+profiles ||--o{ conversation_participants
+conversations ||--o{ conversation_participants
+conversations ||--o{ messages
+messages ||--o{ message_receipts
+profiles ||--o{ messages : "sender"
+profiles ||--o{ message_receipts
+@enduml

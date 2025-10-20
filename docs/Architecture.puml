@@ -1,0 +1,27 @@
+@startuml Architecture
+title MessageAI Simplified Layered Architecture
+actor User as U
+rectangle "Flutter Frontend\n(/frontend)" as FE {
+  component "UI Layer\n(Riverpod + Widgets)" as UI
+  component "Data Layer\n(Drift + Supabase Client)" as DL
+}
+rectangle "Contracts\n(/contracts)" as CT {
+  artifact "OpenAPI Spec\n(openapi.yaml)"
+  artifact "Event Schemas\n(events/*.json)"
+  artifact "Dart Client\n(/frontend/lib/gen/api)"
+}
+rectangle "Supabase Backend\n(/backend)" as BE {
+  component "Edge Functions\n(messages_send, receipts_ack)" as EF
+  component "Realtime Channels\n(messages, receipts)" as RT
+  component "Storage Buckets\n(avatars, media)" as ST
+}
+database "Postgres DB\n(migrations + RLS)" as DB
+U --> UI : Interacts via App
+UI --> DL : Local Reads/Writes\nOffline Cache
+DL --> CT : Uses Generated Client (OpenAPI)
+CT --> EF : API Requests (Validated)
+EF --> DB : SQL + Policies
+DB --> RT : Broadcast Changes (Realtime)
+RT --> DL : Push Updates\nPresence/Receipts
+BE --> ST : Signed URL Access
+@enduml
