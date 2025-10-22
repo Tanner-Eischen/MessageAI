@@ -14,6 +14,8 @@ class Conversations extends Table {
   TextColumn get id => text()();
   TextColumn get title => text()();
   TextColumn get description => text().nullable()();
+  TextColumn get avatarUrl => text().nullable()();
+  TextColumn get inviteCode => text().nullable()();
   IntColumn get createdAt => integer()(); // Unix timestamp
   IntColumn get updatedAt => integer()();
   BoolColumn get isGroup => boolean().withDefault(const Constant(false))();
@@ -119,7 +121,7 @@ class AppDb extends _$AppDb {
   AppDb() : super(_openConnection());
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration {
@@ -135,6 +137,12 @@ class AppDb extends _$AppDb {
 
           // Create reactions table
           await m.createTable(reactions);
+        }
+
+        if (from < 3) {
+          // Add avatar and invite code to conversations
+          await m.addColumn(conversations, conversations.avatarUrl);
+          await m.addColumn(conversations, conversations.inviteCode);
         }
       },
     );
