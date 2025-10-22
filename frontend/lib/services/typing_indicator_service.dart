@@ -32,12 +32,14 @@ class TypingIndicatorService {
     final channel = _supabase.channel('typing:$conversationId');
     _channels[conversationId] = channel;
 
-    // Listen for typing events
-    channel.onBroadcast(
-      event: 'typing',
-      callback: (payload) {
-        final userId = payload['user_id'] as String?;
-        final isTyping = payload['is_typing'] as bool? ?? false;
+    // Listen for typing events using on() method
+    channel.on(
+      RealtimeListenTypes.broadcast,
+      ChannelFilter(event: 'typing'),
+      (payload, [ref]) {
+        final data = payload as Map<String, dynamic>;
+        final userId = data['user_id'] as String?;
+        final isTyping = data['is_typing'] as bool? ?? false;
         final currentUserId = _supabase.auth.currentUser?.id;
 
         // Ignore own typing events
@@ -72,11 +74,7 @@ class TypingIndicatorService {
     );
 
     // Subscribe to channel
-    channel.subscribe((status, error) {
-      if (error != null) {
-        print('Error subscribing to typing channel: $error');
-      }
-    });
+    channel.subscribe();
 
     return controller.stream;
   }
@@ -90,7 +88,8 @@ class TypingIndicatorService {
     if (currentUserId == null) return;
 
     try {
-      await channel.sendBroadcastMessage(
+      channel.send(
+        type: RealtimeListenTypes.broadcast,
         event: 'typing',
         payload: {
           'user_id': currentUserId,
