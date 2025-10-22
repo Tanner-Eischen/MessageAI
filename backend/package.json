@@ -1,5 +1,31 @@
 {
-  "dependencies": {
-    "chocolatey": "^0.0.1"
+  "name": "messageai-backend",
+  "version": "1.0.0",
+  "description": "Backend services for MessageAI using Supabase",
+  "private": true,
+  "scripts": {
+    "db:start": "supabase start",
+    "db:stop": "supabase stop",
+    "db:reset": "supabase db reset",
+    "db:migrate": "supabase migration up",
+    "db:migration:new": "supabase migration new",
+    "db:test": "pg_prove supabase/db/test/*.sql",
+    "funcs:serve": "supabase functions serve --env-file .env",
+    "funcs:deploy": "supabase functions deploy",
+    "funcs:deploy:messages": "supabase functions deploy messages_send",
+    "funcs:deploy:receipts": "supabase functions deploy receipts_ack",
+    "funcs:deploy:groups": "supabase functions deploy create_group",
+    "funcs:deploy:notify": "supabase functions deploy push_notify",
+    "status": "supabase status",
+    "link": "supabase link",
+    "types:generate": "supabase gen types typescript --local > types/database.ts",
+    "logs": "supabase functions logs"
+  },
+  "devDependencies": {
+    "supabase": "^1.200.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
   }
 }

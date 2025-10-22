@@ -1,16 +1,25 @@
-.PHONY: db/start db/migrate db/test funcs/dev contracts/validate contracts/gen
+.PHONY: db/start db/stop db/migrate db/reset db/test funcs/dev funcs/deploy contracts/validate contracts/gen
 
 db/start:
-	npx supabase start
+	npm run db:start
+
+db/stop:
+	npm run db:stop
 
 db/migrate:
-	npx supabase db reset
+	npm run db:migrate
+
+db/reset:
+	npm run db:reset
 
 db/test:
-	pg_prove supabase/db/test/*.sql
+	npm run db:test
 
 funcs/dev:
-	npx supabase functions serve --env-file backend/.env
+	npm run funcs:serve
+
+funcs/deploy:
+	npm run funcs:deploy
 
 contracts/validate:
 	npm --prefix ../contracts ci && npm --prefix ../contracts run validate
