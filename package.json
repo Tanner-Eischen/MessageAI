@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "git": "^0.1.5",
     "supabase": "^2.51.0"
   }
 }
