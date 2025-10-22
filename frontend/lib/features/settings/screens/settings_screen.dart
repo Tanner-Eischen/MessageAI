@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:messageai/data/remote/supabase_client.dart';
 import 'package:messageai/features/auth/screens/auth_screen.dart';
+import 'package:messageai/features/settings/screens/notification_preferences_screen.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 
@@ -148,8 +149,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           // Notifications
           _buildSectionTitle('Notifications'),
+          _buildSettingsTile(
+            icon: Icons.notifications,
+            title: 'Notification Preferences',
+            subtitle: 'Manage devices and settings',
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const NotificationPreferencesScreen(),
+                ),
+              );
+            },
+          ),
           SwitchListTile(
-            secondary: const Icon(Icons.notifications),
+            secondary: const Icon(Icons.notifications_active),
             title: const Text('Push Notifications'),
             subtitle: const Text('Receive message notifications'),
             value: _notificationsEnabled,

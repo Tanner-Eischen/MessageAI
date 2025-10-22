@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:messageai/services/notification_service.dart';
 import 'package:messageai/services/local_notification_service.dart';
 import 'package:messageai/services/deep_link_handler.dart';
+import 'package:messageai/services/device_token_service.dart';
 
 /// Device token state
 final deviceTokenProvider = StateProvider<String?>((ref) {
@@ -18,10 +19,16 @@ final localNotificationServiceProvider = Provider<LocalNotificationService>((ref
   return LocalNotificationService();
 });
 
+/// Device token service provider
+final deviceTokenServiceProvider = Provider<DeviceTokenService>((ref) {
+  return DeviceTokenService();
+});
+
 /// Initialize notifications (Firebase + Local)
 final initializeNotificationsProvider = FutureProvider<void>((ref) async {
   final fcmService = ref.watch(notificationServiceProvider);
   final localService = ref.watch(localNotificationServiceProvider);
+  final deviceTokenService = ref.watch(deviceTokenServiceProvider);
 
   // Initialize local notifications first
   await localService.initialize();
@@ -32,10 +39,17 @@ final initializeNotificationsProvider = FutureProvider<void>((ref) async {
       // Handle foreground message
       _handleForegroundMessage(ref, payload, localService);
     },
-    onTokenRefresh: (token) {
-      // Update device token
+    onTokenRefresh: (token) async {
+      // Update device token in state
       ref.read(deviceTokenProvider.notifier).state = token;
       print('Device token updated: $token');
+
+      // Register token with backend
+      try {
+        await deviceTokenService.registerDeviceToken(token);
+      } catch (e) {
+        print('Failed to register refreshed token: $e');
+      }
     },
   );
 
@@ -50,6 +64,14 @@ final initializeNotificationsProvider = FutureProvider<void>((ref) async {
   final token = await fcmService.getDeviceToken();
   if (token != null) {
     ref.read(deviceTokenProvider.notifier).state = token;
+
+    // Register token with backend
+    try {
+      await deviceTokenService.registerDeviceToken(token);
+      print('Device token registered with backend');
+    } catch (e) {
+      print('Failed to register initial token: $e');
+    }
   }
 
   print('Notifications initialized successfully');
@@ -78,10 +100,14 @@ void _handleForegroundMessage(
   }
 }
 
+/// Notification tap state - used to trigger navigation from UI
+final notificationTapProvider = StateProvider<String?>((ref) => null);
+
 /// Handle notification tap
 void _handleNotificationTap(Ref ref, String conversationId) {
   print('Notification tapped: $conversationId');
-  // Navigation will be handled in main.dart with DeepLinkHandler
+  // Update state to trigger navigation from UI layer
+  ref.read(notificationTapProvider.notifier).state = conversationId;
 }
 
 /// Notification permission state
