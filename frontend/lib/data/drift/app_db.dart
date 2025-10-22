@@ -5,6 +5,7 @@ import 'package:messageai/data/drift/daos/message_dao.dart';
 import 'package:messageai/data/drift/daos/receipt_dao.dart';
 import 'package:messageai/data/drift/daos/participant_dao.dart';
 import 'package:messageai/data/drift/daos/pending_outbox_dao.dart';
+import 'package:messageai/data/drift/daos/reaction_dao.dart';
 
 part 'app_db.g.dart';
 
@@ -29,8 +30,10 @@ class Messages extends Table {
   TextColumn get senderId => text()();
   TextColumn get body => text()();
   TextColumn get mediaUrl => text().nullable()();
+  TextColumn get replyToId => text().nullable()();
   IntColumn get createdAt => integer()();
   IntColumn get updatedAt => integer()();
+  IntColumn get editedAt => integer().nullable()();
   BoolColumn get isSynced => boolean().withDefault(const Constant(false))();
 
   @override
@@ -90,16 +93,33 @@ class PendingOutbox extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+class Reactions extends Table {
+  TextColumn get id => text()();
+  TextColumn get messageId => text()();
+  TextColumn get userId => text()();
+  TextColumn get emoji => text()();
+  IntColumn get createdAt => integer()();
+  BoolColumn get isSynced => boolean().withDefault(const Constant(false))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+
+  @override
+  List<Set<Column>> get uniqueKeys => [
+    {messageId, userId, emoji}
+  ];
+}
+
 // Main database class
 @DriftDatabase(
-  tables: [Conversations, Messages, Participants, Receipts, PendingOutbox],
-  daos: [ConversationDao, MessageDao, ReceiptDao, ParticipantDao, PendingOutboxDao],
+  tables: [Conversations, Messages, Participants, Receipts, PendingOutbox, Reactions],
+  daos: [ConversationDao, MessageDao, ReceiptDao, ParticipantDao, PendingOutboxDao, ReactionDao],
 )
 class AppDb extends _$AppDb {
   AppDb() : super(_openConnection());
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration {
@@ -108,7 +128,14 @@ class AppDb extends _$AppDb {
         await m.createAll();
       },
       onUpgrade: (Migrator m, int from, int to) async {
-        // Handle schema migrations here
+        if (from < 2) {
+          // Add new columns to messages table
+          await m.addColumn(messages, messages.replyToId);
+          await m.addColumn(messages, messages.editedAt);
+
+          // Create reactions table
+          await m.createTable(reactions);
+        }
       },
     );
   }

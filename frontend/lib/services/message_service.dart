@@ -19,6 +19,7 @@ class MessageService {
     required String conversationId,
     required String body,
     String? mediaUrl,
+    String? replyToId,
   }) async {
     final currentUser = _supabase.auth.currentUser;
     if (currentUser == null) {
@@ -27,13 +28,14 @@ class MessageService {
 
     final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final messageId = const Uuid().v4();
-    
+
     final message = Message(
       id: messageId,
       conversationId: conversationId,
       senderId: currentUser.id,
       body: body,
       mediaUrl: mediaUrl,
+      replyToId: replyToId,
       createdAt: now,
       updatedAt: now,
       isSynced: false,
@@ -41,7 +43,7 @@ class MessageService {
 
     // Save to local database first (optimistic UI)
     await _db.messageDao.insertMessage(message);
-    
+
     // Update conversation last message time
     await _db.conversationDao.updateLastMessageTime(conversationId);
 
@@ -53,13 +55,14 @@ class MessageService {
         'sender_id': currentUser.id,
         'body': body,
         'media_url': mediaUrl,
+        'reply_to_id': replyToId,
         'created_at': DateTime.fromMillisecondsSinceEpoch(now * 1000).toIso8601String(),
         'updated_at': DateTime.fromMillisecondsSinceEpoch(now * 1000).toIso8601String(),
       });
 
       // Mark as synced
       await _db.messageDao.markMessageAsSynced(messageId);
-      
+
       print('Message synced to backend: $messageId');
     } catch (e) {
       print('Error syncing message to backend: $e');
