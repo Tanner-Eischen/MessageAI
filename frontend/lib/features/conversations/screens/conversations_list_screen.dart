@@ -194,7 +194,7 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
                     children: [
                       CircleAvatar(
                         radius: 28,
-                        backgroundColor: Theme.of(context).colorScheme.secondary,
+                        backgroundColor: Theme.of(context).colorScheme.primary,
                         child: Icon(
                           conv.isGroup ? Icons.group : Icons.person,
                           color: Colors.white,
@@ -252,7 +252,7 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
                             _formatTime(conv.lastMessageAt),
                             style: TextStyle(
                               fontSize: 12,
-                              color: Theme.of(context).colorScheme.secondary,
+                              color: Theme.of(context).colorScheme.primary,
                             ),
                           ),
                         ],
