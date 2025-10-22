@@ -43,12 +43,18 @@ class _MessageScreenState extends State<MessageScreen> {
   Set<String> _typingUsers = {};
   Timer? _typingTimer;
   XFile? _selectedImage;
+  Set<String> _onlineUsers = {};
 
   @override
   void initState() {
     super.initState();
     _currentUserId = _messageService.getCurrentUserId();
-    _messagesFuture = _messageService.getMessagesByConversation(widget.conversationId);
+    
+    // Sync messages from backend first, then load
+    _messagesFuture = _messageService.getMessagesByConversation(
+      widget.conversationId,
+      syncFirst: true,
+    );
     _participantsFuture = _conversationService.getParticipants(widget.conversationId);
     
     // Initialize real-time features
@@ -78,12 +84,24 @@ class _MessageScreenState extends State<MessageScreen> {
     }
   }
 
+  Timer? _pollTimer;
+  Timer? _presenceCheckTimer;
+
   Future<void> _initializeRealtime() async {
     try {
       // Subscribe to presence updates
       await _presenceService.subscribeToPresence(widget.conversationId);
       // Set current user as online
       await _presenceService.setPresenceStatus(widget.conversationId, true);
+      
+      // Poll presence status every 2 seconds to update UI
+      _presenceCheckTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
+        if (mounted) {
+          setState(() {
+            _onlineUsers = _presenceService.getOnlineUsers(widget.conversationId);
+          });
+        }
+      });
       
       // Subscribe to real-time messages
       _realtimeService.subscribeToMessages(widget.conversationId).listen((messages) {
@@ -100,6 +118,32 @@ class _MessageScreenState extends State<MessageScreen> {
           _typingUsers = typingUserIds;
         });
       });
+      
+      // FALLBACK: Poll for new messages every 3 seconds in case realtime fails
+      print('🔄 Starting message polling every 3 seconds...');
+      _pollTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
+        if (mounted) {
+          print('📡 Polling for new messages... (tick ${timer.tick})');
+          try {
+            await _messageService.syncMessages(widget.conversationId);
+            final messages = await _messageService.getMessagesByConversation(widget.conversationId);
+            if (mounted) {
+              setState(() {
+                _messagesFuture = Future.value(messages);
+              });
+              _loadReceipts();
+            }
+            print('✅ Poll complete - found ${messages.length} messages');
+          } catch (e) {
+            print('❌ Error polling messages: $e');
+          }
+        } else {
+          print('⚠️ Widget not mounted, cancelling poll timer');
+          timer.cancel();
+        }
+      });
+      
+      print('✅ Realtime initialized with polling fallback (every 3 seconds)');
     } catch (e) {
       print('Error initializing realtime: $e');
     }
@@ -110,6 +154,10 @@ class _MessageScreenState extends State<MessageScreen> {
     _messageController.removeListener(_onTextChanged);
     _messageController.dispose();
     _typingTimer?.cancel();
+    _pollTimer?.cancel();
+    _presenceCheckTimer?.cancel();
+    // Set user as offline before leaving
+    _presenceService.setPresenceStatus(widget.conversationId, false);
     // Clean up realtime subscriptions
     _presenceService.unsubscribeFromPresence(widget.conversationId);
     _realtimeService.unsubscribeFromMessages(widget.conversationId);
@@ -264,23 +312,61 @@ class _MessageScreenState extends State<MessageScreen> {
       appBar: AppBar(
         title: Row(
           children: [
-            CircleAvatar(
-              radius: 18,
-              backgroundColor: Colors.grey[300],
-              child: Icon(
-                Icons.group,
-                size: 20,
-                color: Colors.grey[700],
-              ),
+            Stack(
+              children: [
+                CircleAvatar(
+                  radius: 18,
+                  backgroundColor: Colors.grey[300],
+                  child: Icon(
+                    Icons.group,
+                    size: 20,
+                    color: Colors.grey[700],
+                  ),
+                ),
+                if (_onlineUsers.isNotEmpty)
+                  Positioned(
+                    right: 0,
+                    bottom: 0,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: Colors.green,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                      ),
+                      child: Text(
+                        '${_onlineUsers.length}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(
-                widget.conversationTitle,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.conversationTitle,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (_onlineUsers.isNotEmpty)
+                    Text(
+                      '${_onlineUsers.length} online',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.white.withOpacity(0.8),
+                      ),
+                    ),
+                ],
               ),
             ),
           ],
@@ -342,19 +428,55 @@ class _MessageScreenState extends State<MessageScreen> {
                     final messageIndex = _typingUsers.isNotEmpty ? index - 1 : index;
                     final message = messages[messages.length - 1 - messageIndex];
                     final isOwn = message.senderId == _currentUserId;
+                    final isOnline = _onlineUsers.contains(message.senderId);
 
                     return Align(
                       alignment: isOwn ? Alignment.centerRight : Alignment.centerLeft,
-                      child: Container(
-                        constraints: BoxConstraints(
-                          maxWidth: MediaQuery.of(context).size.width * 0.75,
-                        ),
-                        margin: EdgeInsets.only(
-                          left: isOwn ? 64 : 8,
-                          right: isOwn ? 8 : 64,
-                          top: 2,
-                          bottom: 2,
-                        ),
+                      child: Row(
+                        mainAxisAlignment: isOwn ? MainAxisAlignment.end : MainAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          // Show avatar with online status for other users' messages (left side)
+                          if (!isOwn) ...[
+                            Padding(
+                              padding: const EdgeInsets.only(left: 8, right: 4, bottom: 4),
+                              child: Stack(
+                                children: [
+                                  CircleAvatar(
+                                    radius: 16,
+                                    backgroundColor: Colors.grey[400],
+                                    child: Text(
+                                      message.senderId.substring(0, 1).toUpperCase(),
+                                      style: const TextStyle(color: Colors.white, fontSize: 14),
+                                    ),
+                                  ),
+                                  Positioned(
+                                    right: 0,
+                                    bottom: 0,
+                                    child: Container(
+                                      width: 12,
+                                      height: 12,
+                                      decoration: BoxDecoration(
+                                        color: isOnline ? Colors.green : Colors.grey,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(color: Colors.white, width: 2),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                          Container(
+                            constraints: BoxConstraints(
+                              maxWidth: MediaQuery.of(context).size.width * 0.65,
+                            ),
+                            margin: EdgeInsets.only(
+                              left: isOwn ? 64 : 0,
+                              right: isOwn ? 8 : 64,
+                              top: 2,
+                              bottom: 2,
+                            ),
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                         decoration: BoxDecoration(
                           color: isOwn
@@ -439,6 +561,8 @@ class _MessageScreenState extends State<MessageScreen> {
                             ),
                           ],
                         ),
+                          ),
+                        ],
                       ),
                     );
                   },
@@ -632,8 +756,12 @@ class _MessageScreenState extends State<MessageScreen> {
                   
                   if (mounted) {
                     Navigator.pop(context);
+                    // Force refresh participants from backend
                     this.setState(() {
-                      _participantsFuture = _conversationService.getParticipants(widget.conversationId);
+                      _participantsFuture = _conversationService.getParticipants(
+                        widget.conversationId, 
+                        syncFirst: true,  // Force sync from backend
+                      );
                     });
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(content: Text('Added $email to conversation')),
@@ -708,47 +836,65 @@ class _MessageScreenState extends State<MessageScreen> {
                           participant.userId,
                         );
                         
-                        return ListTile(
-                          leading: Stack(
-                            children: [
-                              CircleAvatar(
-                                child: Text(
-                                  participant.userId[0].toUpperCase(),
-                                ),
-                              ),
-                              Positioned(
-                                right: 0,
-                                bottom: 0,
-                                child: Container(
-                                  width: 12,
-                                  height: 12,
-                                  decoration: BoxDecoration(
-                                    color: isOnline ? Colors.green : Colors.grey,
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: Colors.white,
-                                      width: 2,
+                        return FutureBuilder<Map<String, dynamic>?>(
+                          future: _conversationService.getParticipantProfile(participant.userId),
+                          builder: (context, profileSnapshot) {
+                            final profile = profileSnapshot.data;
+                            final displayName = profile?['email'] as String? ?? 
+                                              profile?['username'] as String? ?? 
+                                              profile?['display_name'] as String? ??
+                                              participant.userId.substring(0, 8);
+                            final avatarUrl = profile?['avatar_url'] as String?;
+                            final initial = displayName.isNotEmpty 
+                                ? displayName[0].toUpperCase() 
+                                : 'U';
+                            
+                            return ListTile(
+                              leading: Stack(
+                                children: [
+                                  CircleAvatar(
+                                    backgroundImage: avatarUrl != null
+                                        ? NetworkImage(avatarUrl)
+                                        : null,
+                                    child: avatarUrl == null
+                                        ? Text(initial)
+                                        : null,
+                                  ),
+                                  Positioned(
+                                    right: 0,
+                                    bottom: 0,
+                                    child: Container(
+                                      width: 12,
+                                      height: 12,
+                                      decoration: BoxDecoration(
+                                        color: isOnline ? Colors.green : Colors.grey,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: Colors.white,
+                                          width: 2,
+                                        ),
+                                      ),
                                     ),
                                   ),
-                                ),
+                                ],
                               ),
-                            ],
-                          ),
-                          title: Text(participant.userId),
-                          subtitle: Text(
-                            isOnline
-                                ? (participant.isAdmin ? 'Admin • Online' : 'Member • Online')
-                                : (participant.isAdmin ? 'Admin • Offline' : 'Member • Offline'),
-                          ),
-                          trailing: participant.userId != _currentUserId
-                              ? IconButton(
-                                  icon: const Icon(Icons.remove_circle),
-                                  onPressed: () {
-                                    Navigator.pop(context);
-                                    _removeParticipant(participant.userId);
-                                  },
-                                )
-                              : null,
+                              title: Text(displayName),
+                              subtitle: Text(
+                                isOnline
+                                    ? (participant.isAdmin ? 'Admin • Online' : 'Member • Online')
+                                    : (participant.isAdmin ? 'Admin • Offline' : 'Member • Offline'),
+                              ),
+                              trailing: participant.userId != _currentUserId
+                                  ? IconButton(
+                                      icon: const Icon(Icons.remove_circle),
+                                      onPressed: () {
+                                        Navigator.pop(context);
+                                        _removeParticipant(participant.userId);
+                                      },
+                                    )
+                                  : null,
+                            );
+                          },
                         );
                       },
                     ),

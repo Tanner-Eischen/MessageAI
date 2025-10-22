@@ -88,8 +88,77 @@ class ConversationService {
     return conversation;
   }
 
-  /// Get all conversations
-  Future<List<Conversation>> getAllConversations() async {
+  /// Sync conversations from backend
+  Future<void> syncConversations() async {
+    try {
+      print('🔄 Syncing conversations from backend...');
+      
+      final currentUser = _supabase.auth.currentUser;
+      if (currentUser == null) {
+        print('❌ User not authenticated, skipping sync');
+        return;
+      }
+
+      // Fetch conversations where user is a participant
+      final response = await _supabase
+          .from('conversation_participants')
+          .select('conversation_id')
+          .eq('user_id', currentUser.id);
+
+      final conversationIds = (response as List)
+          .map((p) => p['conversation_id'] as String)
+          .toList();
+
+      if (conversationIds.isEmpty) {
+        print('ℹ️  No conversations found for user');
+        return;
+      }
+
+      // Fetch full conversation details
+      final conversationsResponse = await _supabase
+          .from('conversations')
+          .select('*')
+          .in_('id', conversationIds);
+
+      print('📥 Fetched ${(conversationsResponse as List).length} conversations from backend');
+
+      // Save to local database
+      for (final convData in conversationsResponse) {
+        final conversation = Conversation(
+          id: convData['id'] as String,
+          title: convData['title'] as String,
+          description: convData['description'] as String?,
+          createdAt: DateTime.parse(convData['created_at'] as String)
+              .millisecondsSinceEpoch ~/
+              1000,
+          updatedAt: DateTime.parse(convData['updated_at'] as String)
+              .millisecondsSinceEpoch ~/
+              1000,
+          isGroup: convData['is_group'] as bool? ?? false,
+          lastMessageAt: convData['last_message_at'] != null
+              ? DateTime.parse(convData['last_message_at'] as String)
+                  .millisecondsSinceEpoch ~/
+                  1000
+              : DateTime.parse(convData['created_at'] as String)
+                  .millisecondsSinceEpoch ~/
+                  1000,
+          isSynced: true,
+        );
+
+        await _db.conversationDao.upsertConversation(conversation);
+      }
+
+      print('✅ Conversations synced successfully');
+    } catch (e) {
+      print('❌ Error syncing conversations: $e');
+    }
+  }
+
+  /// Get all conversations (with optional sync)
+  Future<List<Conversation>> getAllConversations({bool syncFirst = true}) async {
+    if (syncFirst) {
+      await syncConversations();
+    }
     return _db.conversationDao.getAllConversations();
   }
 
@@ -103,9 +172,48 @@ class ConversationService {
     return _db.conversationDao.getConversationById(id);
   }
 
-  /// Delete conversation
+  /// Delete conversation (local and remote)
   Future<void> deleteConversation(String id) async {
+    final currentUser = _supabase.auth.currentUser;
+    print('━' * 60);
+    print('🗑️ DELETING CONVERSATION');
+    print('━' * 60);
+    print('Conversation ID: $id');
+    print('User ID: ${currentUser?.id}');
+    
+    // Delete from local database first
     await _db.conversationDao.deleteConversation(id);
+    print('✅ Deleted from local database');
+    
+    // Try to delete from Supabase
+    try {
+      print('Attempting to delete from Supabase...');
+      
+      // Delete from Supabase (CASCADE will delete participants and messages)
+      await _supabase
+          .from('conversations')
+          .delete()
+          .eq('id', id);
+      
+      print('✅ Conversation deleted from backend: $id');
+      print('━' * 60);
+    } catch (e) {
+      print('━' * 60);
+      print('❌ ERROR DELETING FROM BACKEND');
+      print('━' * 60);
+      print('Error: $e');
+      print('Error Type: ${e.runtimeType}');
+      
+      if (e.toString().contains('row-level security')) {
+        print('🔒 RLS POLICY BLOCKING DELETE!');
+        print('Solution: Run the SQL in FIX_DELETE_CONVERSATION.md');
+      }
+      
+      print('━' * 60);
+      // Already deleted locally, so this is non-critical
+      // But we should rethrow so the UI can show the error
+      rethrow;
+    }
   }
 
   /// Update conversation title
@@ -125,9 +233,63 @@ class ConversationService {
     return _db.conversationDao.getConversationCount();
   }
 
+  /// Sync participants from backend
+  Future<void> syncParticipants(String conversationId) async {
+    try {
+      print('🔄 Syncing participants for conversation: $conversationId');
+      
+      // Fetch participants from backend
+      final response = await _supabase
+          .from('conversation_participants')
+          .select('*')
+          .eq('conversation_id', conversationId);
+
+      print('📥 Fetched ${(response as List).length} participants from backend');
+
+      // Save participants to local database
+      for (final partData in response) {
+        final participant = Participant(
+          id: partData['id'] as String,
+          conversationId: partData['conversation_id'] as String,
+          userId: partData['user_id'] as String,
+          joinedAt: DateTime.parse(partData['joined_at'] as String)
+              .millisecondsSinceEpoch ~/
+              1000,
+          isAdmin: partData['is_admin'] as bool? ?? false,
+          isSynced: true,
+        );
+        
+        await _db.participantDao.addParticipant(participant);
+      }
+
+      print('✅ Participants synced successfully');
+    } catch (e) {
+      print('❌ Error syncing participants: $e');
+    }
+  }
+
   /// Get participants in a conversation
-  Future<List<Participant>> getParticipants(String conversationId) async {
+  Future<List<Participant>> getParticipants(String conversationId, {bool syncFirst = true}) async {
+    if (syncFirst) {
+      await syncParticipants(conversationId);
+    }
     return _db.participantDao.getParticipantsByConversation(conversationId);
+  }
+  
+  /// Get participant profile from Supabase by user ID
+  Future<Map<String, dynamic>?> getParticipantProfile(String userId) async {
+    try {
+      final response = await _supabase
+          .from('profiles')
+          .select('user_id, username, email, avatar_url, display_name')
+          .eq('user_id', userId)
+          .single();
+      
+      return response as Map<String, dynamic>;
+    } catch (e) {
+      print('Error fetching profile for $userId: $e');
+      return null;
+    }
   }
 
   /// Add participant to conversation

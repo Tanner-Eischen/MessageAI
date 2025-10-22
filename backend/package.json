@@ -1,5 +1,13 @@
 {
+  "name": "messageai-backend",
+  "version": "1.0.0",
+  "description": "MessageAI Backend Diagnostic Tests",
+  "scripts": {
+    "test": "node test_diagnostics.js"
+  },
   "dependencies": {
-    "chocolatey": "^0.0.1"
+    "@supabase/supabase-js": "^2.39.0",
+    "dotenv": "^16.3.1",
+    "uuid": "^13.0.0"
   }
 }

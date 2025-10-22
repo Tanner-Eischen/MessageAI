@@ -22,6 +22,13 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
     super.initState();
     _conversationsFuture = _conversationService.getAllConversations();
   }
+  
+  // Add pull-to-refresh
+  Future<void> _refreshConversations() async {
+    setState(() {
+      _conversationsFuture = _conversationService.getAllConversations(syncFirst: true);
+    });
+  }
 
   void _showNewConversationDialog() {
     final titleController = TextEditingController();
@@ -66,8 +73,9 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
                 if (mounted) {
                   Navigator.pop(context);
                   setState(() {
+                    // Don't re-sync from backend (keeps deleted convos deleted)
                     _conversationsFuture =
-                        _conversationService.getAllConversations();
+                        _conversationService.getAllConversations(syncFirst: false);
                   });
                 }
               } catch (e) {
@@ -106,9 +114,11 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
           ),
         ],
       ),
-      body: FutureBuilder<List<Conversation>>(
-        future: _conversationsFuture,
-        builder: (context, snapshot) {
+      body: RefreshIndicator(
+        onRefresh: _refreshConversations,
+        child: FutureBuilder<List<Conversation>>(
+          future: _conversationsFuture,
+          builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -176,31 +186,93 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
             ),
             itemBuilder: (context, index) {
               final conv = conversations[index];
-              return InkWell(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => MessageScreen(
-                        conversationId: conv.id,
-                        conversationTitle: conv.title,
-                      ),
-                    ),
+              return Dismissible(
+                key: Key(conv.id),
+                direction: DismissDirection.endToStart,
+                background: Container(
+                  alignment: Alignment.centerRight,
+                  padding: const EdgeInsets.only(right: 20),
+                  color: Colors.red,
+                  child: const Icon(
+                    Icons.delete,
+                    color: Colors.white,
+                  ),
+                ),
+                confirmDismiss: (direction) async {
+                  return await showDialog(
+                    context: context,
+                    builder: (BuildContext context) {
+                      return AlertDialog(
+                        title: const Text('Delete Conversation'),
+                        content: Text(
+                          'Are you sure you want to delete "${conv.title}"? This cannot be undone.',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(false),
+                            child: const Text('Cancel'),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(true),
+                            style: TextButton.styleFrom(
+                              foregroundColor: Colors.red,
+                            ),
+                            child: const Text('Delete'),
+                          ),
+                        ],
+                      );
+                    },
                   );
                 },
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  child: Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 28,
-                        backgroundColor: Theme.of(context).colorScheme.primary,
-                        child: Icon(
-                          conv.isGroup ? Icons.group : Icons.person,
-                          color: Colors.white,
-                          size: 28,
+                onDismissed: (direction) async {
+                  try {
+                    await _conversationService.deleteConversation(conv.id);
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Deleted "${conv.title}"')),
+                      );
+                      setState(() {
+                        // Refresh from local DB only (don't re-sync from backend)
+                        _conversationsFuture = _conversationService.getAllConversations(syncFirst: false);
+                      });
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Error deleting conversation: $e')),
+                      );
+                      setState(() {
+                        // Re-sync to refresh the list
+                        _conversationsFuture = _conversationService.getAllConversations(syncFirst: true);
+                      });
+                    }
+                  }
+                },
+                child: InkWell(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => MessageScreen(
+                          conversationId: conv.id,
+                          conversationTitle: conv.title,
                         ),
                       ),
+                    );
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 28,
+                          backgroundColor: Theme.of(context).colorScheme.primary,
+                          child: Icon(
+                            conv.isGroup ? Icons.group : Icons.person,
+                            color: Colors.white,
+                            size: 28,
+                          ),
+                        ),
                       const SizedBox(width: 16),
                       Expanded(
                         child: Column(
@@ -260,10 +332,12 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
                     ],
                   ),
                 ),
+                ),
               );
             },
           );
-        },
+          },
+        ),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _showNewConversationDialog,

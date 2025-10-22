@@ -28,9 +28,9 @@ class ParticipantDao extends DatabaseAccessor<AppDb> with _$ParticipantDaoMixin 
         .getSingleOrNull();
   }
 
-  /// Add participant to conversation
+  /// Add participant to conversation (upsert to avoid duplicates)
   Future<void> addParticipant(Participant participant) async {
-    await into(participants).insert(participant);
+    await into(participants).insertOnConflictUpdate(participant);
   }
 
   /// Batch add participants
