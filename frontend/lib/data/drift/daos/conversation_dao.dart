@@ -4,16 +4,14 @@ import 'package:messageai/data/drift/app_db.dart';
 part 'conversation_dao.g.dart';
 
 @DriftAccessor(tables: [Conversations])
-class ConversationDao extends DatabaseAccessor<AppDb> {
+class ConversationDao extends DatabaseAccessor<AppDb> with _$ConversationDaoMixin {
   ConversationDao(AppDb db) : super(db);
 
   /// Get all conversations ordered by last message
   Future<List<Conversation>> getAllConversations() async {
-    return select(conversations)
-        .orderBy([
-          (c) => OrderingTerm(expression: c.lastMessageAt, mode: OrderingMode.desc),
-        ])
-        .get();
+    final query = select(conversations)
+      ..orderBy([(c) => OrderingTerm(expression: c.lastMessageAt, mode: OrderingMode.desc)]);
+    return query.get();
   }
 
   /// Get conversation by ID
@@ -26,7 +24,7 @@ class ConversationDao extends DatabaseAccessor<AppDb> {
   Future<void> upsertConversation(Conversation conversation) async {
     await into(conversations).insert(
       conversation,
-      onConflict: DoUpdate((old) => old),
+      onConflict: DoUpdate((_) => conversation),
     );
   }
 
@@ -74,10 +72,7 @@ class ConversationDao extends DatabaseAccessor<AppDb> {
 
   /// Count total conversations
   Future<int> getConversationCount() async {
-    final result = await (select(conversations)
-          ..addColumns([countAll()]))
-        .map((row) => row.read<int>(countAll()))
-        .getSingle();
-    return result;
+    final result = await select(conversations).get();
+    return result.length;
   }
 }

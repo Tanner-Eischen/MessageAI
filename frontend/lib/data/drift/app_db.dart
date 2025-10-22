@@ -1,5 +1,12 @@
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
+import 'package:messageai/data/drift/daos/conversation_dao.dart';
+import 'package:messageai/data/drift/daos/message_dao.dart';
+import 'package:messageai/data/drift/daos/receipt_dao.dart';
+import 'package:messageai/data/drift/daos/participant_dao.dart';
+import 'package:messageai/data/drift/daos/pending_outbox_dao.dart';
+
+part 'app_db.g.dart';
 
 // Table definitions
 class Conversations extends Table {
@@ -84,7 +91,10 @@ class PendingOutbox extends Table {
 }
 
 // Main database class
-@DriftDatabase(tables: [Conversations, Messages, Participants, Receipts, PendingOutbox])
+@DriftDatabase(
+  tables: [Conversations, Messages, Participants, Receipts, PendingOutbox],
+  daos: [ConversationDao, MessageDao, ReceiptDao, ParticipantDao, PendingOutboxDao],
+)
 class AppDb extends _$AppDb {
   AppDb() : super(_openConnection());
 
@@ -119,6 +129,5 @@ class AppDb extends _$AppDb {
 QueryExecutor _openConnection() {
   return driftDatabase(
     name: 'messageai_db',
-    native: DriftNativeSqlite3Database.memory(),
   );
 }

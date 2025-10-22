@@ -4,7 +4,7 @@ import 'package:messageai/data/drift/app_db.dart';
 part 'participant_dao.g.dart';
 
 @DriftAccessor(tables: [Participants])
-class ParticipantDao extends DatabaseAccessor<AppDb> {
+class ParticipantDao extends DatabaseAccessor<AppDb> with _$ParticipantDaoMixin {
   ParticipantDao(AppDb db) : super(db);
 
   /// Get all participants in a conversation
@@ -71,25 +71,21 @@ class ParticipantDao extends DatabaseAccessor<AppDb> {
         .write(const ParticipantsCompanion(isAdmin: Value(false)));
   }
 
-  /// Get admin count for a conversation
+  /// Get admin count for conversation
   Future<int> getAdminCount(String conversationId) async {
     final result = await (select(participants)
           ..where((p) =>
-              p.conversationId.equals(conversationId) & p.isAdmin.equals(true))
-          ..addColumns([countAll()]))
-        .map((row) => row.read<int>(countAll()))
-        .getSingle();
-    return result;
+              p.conversationId.equals(conversationId) & p.isAdmin.equals(true)))
+        .get();
+    return result.length;
   }
 
   /// Get participant count for a conversation
   Future<int> getParticipantCount(String conversationId) async {
     final result = await (select(participants)
-          ..where((p) => p.conversationId.equals(conversationId))
-          ..addColumns([countAll()]))
-        .map((row) => row.read<int>(countAll()))
-        .getSingle();
-    return result;
+          ..where((p) => p.conversationId.equals(conversationId)))
+        .get();
+    return result.length;
   }
 
   /// Check if user is participant in conversation

@@ -1,5 +1,6 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 /// Notification payload model
 class NotificationPayload {
@@ -40,13 +41,18 @@ class NotificationService {
     required Function(NotificationPayload) onMessageReceived,
     required Function(String) onTokenRefresh,
   }) async {
+    // Skip Firebase Messaging on web due to compatibility issues
+    if (kIsWeb) {
+      print('Firebase Messaging not supported on web platform');
+      return;
+    }
+    
     try {
       // Request notification permissions
       final settings = await _messaging.requestPermission(
         alert: true,
         announcement: false,
         badge: true,
-        carryForward: true,
         criticalAlert: false,
         provisional: false,
         sound: true,
@@ -88,6 +94,8 @@ class NotificationService {
 
   /// Get device token for sending notifications
   Future<String?> getDeviceToken() async {
+    if (kIsWeb) return null;
+    
     try {
       final token = await _messaging.getToken();
       return token;
@@ -99,6 +107,8 @@ class NotificationService {
 
   /// Subscribe to a topic
   Future<void> subscribeToTopic(String topic) async {
+    if (kIsWeb) return;
+    
     try {
       await _messaging.subscribeToTopic(topic);
       print('Subscribed to topic: $topic');
@@ -109,6 +119,8 @@ class NotificationService {
 
   /// Unsubscribe from a topic
   Future<void> unsubscribeFromTopic(String topic) async {
+    if (kIsWeb) return;
+    
     try {
       await _messaging.unsubscribeFromTopic(topic);
       print('Unsubscribed from topic: $topic');
@@ -119,6 +131,8 @@ class NotificationService {
 
   /// Check if notifications are enabled
   Future<bool> areNotificationsEnabled() async {
+    if (kIsWeb) return false;
+    
     try {
       final settings = await _messaging.getNotificationSettings();
       return settings.authorizationStatus == AuthorizationStatus.authorized;
@@ -132,6 +146,8 @@ class NotificationService {
   Future<void> setupNotificationTapHandler({
     required Function(String) onNotificationTapped,
   }) async {
+    if (kIsWeb) return;
+    
     try {
       // When the app is in foreground and user taps notification
       FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
