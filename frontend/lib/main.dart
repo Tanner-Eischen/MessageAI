@@ -4,6 +4,7 @@ import 'package:messageai/core/env.dart';
 import 'package:messageai/data/remote/supabase_client.dart';
 import 'package:messageai/data/drift/app_db.dart';
 import 'package:messageai/state/notification_providers.dart';
+import 'package:messageai/services/background_sync_service.dart';
 import 'package:messageai/app.dart';
 
 void main() async {
@@ -18,7 +19,11 @@ void main() async {
 
   // Initialize Drift database
   final db = AppDb.instance;
-  
+
+  // Initialize background sync service
+  final syncService = BackgroundSyncService();
+  await syncService.initialize();
+
   // Run the app with Riverpod provider scope
   runApp(
     ProviderScope(

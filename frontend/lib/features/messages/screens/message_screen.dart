@@ -4,10 +4,12 @@ import 'package:messageai/services/conversation_service.dart';
 import 'package:messageai/services/presence_service.dart';
 import 'package:messageai/services/realtime_message_service.dart';
 import 'package:messageai/services/typing_indicator_service.dart';
+import 'package:messageai/services/background_sync_service.dart';
 import 'package:messageai/data/drift/app_db.dart';
 import 'package:messageai/data/drift/daos/receipt_dao.dart';
 import 'package:messageai/data/remote/supabase_client.dart';
 import 'package:messageai/features/common/widgets/connection_status_indicator.dart';
+import 'package:messageai/features/conversations/screens/conversation_settings_screen.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:async';
 import 'dart:io';
@@ -803,6 +805,50 @@ class _MessageScreenState extends State<MessageScreen> {
 
   Widget _buildDeliveryIndicator(Message message, bool isOwn) {
     if (!isOwn) return const SizedBox.shrink();
+
+    // Check if message is unsynced (failed to send)
+    if (!message.isSynced) {
+      return GestureDetector(
+        onTap: () async {
+          try {
+            final syncService = BackgroundSyncService();
+            await syncService.retryMessage(message.id);
+            setState(() {
+              _messagesFuture = _messageService.getMessagesByConversation(widget.conversationId);
+            });
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Message sent successfully')),
+              );
+            }
+          } catch (e) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Failed to send: $e')),
+              );
+            }
+          }
+        },
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 14,
+              color: Colors.red,
+            ),
+            SizedBox(width: 2),
+            Text(
+              'Tap to retry',
+              style: TextStyle(
+                fontSize: 10,
+                color: Colors.red,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
     final receipts = _receiptsCache[message.id] ?? [];
     final hasDelivered = receipts.any((r) => r.status == 'delivered' || r.status == 'read');
