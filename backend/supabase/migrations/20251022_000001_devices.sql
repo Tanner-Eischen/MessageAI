@@ -19,10 +19,7 @@ CREATE TABLE IF NOT EXISTS profile_devices (
   FOREIGN KEY (user_id) REFERENCES profiles (user_id) ON DELETE CASCADE,
   
   -- Unique constraint: one token per device (token can only be registered once)
-  UNIQUE(fcm_token),
-  
-  -- Index for finding devices by user
-  CONSTRAINT devices_pkey PRIMARY KEY (id)
+  UNIQUE(fcm_token)
 );
 
 -- Create indexes for efficient queries
