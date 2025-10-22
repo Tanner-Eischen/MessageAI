@@ -4,6 +4,7 @@ import 'package:messageai/data/drift/app_db.dart';
 import 'package:messageai/features/messages/screens/message_screen.dart';
 import 'package:messageai/features/settings/screens/settings_screen.dart';
 import 'package:messageai/features/common/widgets/connection_status_indicator.dart';
+import 'package:messageai/features/users/screens/user_search_screen.dart';
 
 /// Screen showing list of conversations
 class ConversationsListScreen extends StatefulWidget {
@@ -93,6 +94,23 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
         title: const Text('MessageAI'),
         elevation: 0,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.person_search),
+            onPressed: () async {
+              final conversationId = await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const UserSearchScreen(),
+                ),
+              );
+              if (conversationId != null && mounted) {
+                setState(() {
+                  _conversationsFuture = _conversationService.getAllConversations();
+                });
+              }
+            },
+            tooltip: 'Find Users',
+          ),
           IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () {

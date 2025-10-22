@@ -84,9 +84,53 @@ class MessageService {
     return _db.messageDao.getMessageById(id);
   }
 
+  /// Edit message (within 15 minutes)
+  Future<void> editMessage(String messageId, String newBody) async {
+    final message = await getMessageById(messageId);
+    if (message == null) {
+      throw 'Message not found';
+    }
+
+    final now = DateTime.now();
+    final createdAt = DateTime.fromMillisecondsSinceEpoch(message.createdAt * 1000);
+    final difference = now.difference(createdAt);
+
+    if (difference.inMinutes >= 15) {
+      throw 'Cannot edit messages older than 15 minutes';
+    }
+
+    final updatedAt = now.millisecondsSinceEpoch ~/ 1000;
+
+    await _db.messageDao.updateMessage(
+      messageId,
+      body: newBody,
+      editedAt: updatedAt,
+    );
+
+    try {
+      await _supabase.from('messages').update({
+        'body': newBody,
+        'edited_at': now.toIso8601String(),
+        'updated_at': now.toIso8601String(),
+      }).eq('id', messageId);
+
+      print('Message edited successfully: $messageId');
+    } catch (e) {
+      print('Error editing message: $e');
+      rethrow;
+    }
+  }
+
   /// Delete message
   Future<void> deleteMessage(String id) async {
     await _db.messageDao.deleteMessage(id);
+
+    try {
+      await _supabase.from('messages').delete().eq('id', id);
+      print('Message deleted from backend: $id');
+    } catch (e) {
+      print('Error deleting message from backend: $e');
+    }
   }
 
   /// Get current user ID

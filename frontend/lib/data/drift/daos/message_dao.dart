@@ -86,4 +86,20 @@ class MessageDao extends DatabaseAccessor<AppDb> with _$MessageDaoMixin {
   Future<void> upsertMessage(Message message) async {
     await into(messages).insertOnConflictUpdate(message);
   }
+
+  /// Update message body and edited timestamp
+  Future<void> updateMessage(
+    String messageId, {
+    String? body,
+    int? editedAt,
+  }) async {
+    final companion = MessagesCompanion(
+      body: body != null ? Value(body) : const Value.absent(),
+      editedAt: editedAt != null ? Value(editedAt) : const Value.absent(),
+      updatedAt: Value(DateTime.now().millisecondsSinceEpoch ~/ 1000),
+    );
+
+    await (update(messages)..where((m) => m.id.equals(messageId)))
+        .write(companion);
+  }
 }
