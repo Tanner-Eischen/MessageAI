@@ -7,6 +7,7 @@ import 'package:messageai/services/typing_indicator_service.dart';
 import 'package:messageai/data/drift/app_db.dart';
 import 'package:messageai/data/drift/daos/receipt_dao.dart';
 import 'package:messageai/data/remote/supabase_client.dart';
+import 'package:messageai/features/common/widgets/connection_status_indicator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:async';
 import 'dart:io';
@@ -80,8 +81,10 @@ class _MessageScreenState extends State<MessageScreen> {
 
   Future<void> _initializeRealtime() async {
     try {
-      // Subscribe to presence updates
-      await _presenceService.subscribeToPresence(widget.conversationId);
+      // Subscribe to presence updates and listen to changes
+      _presenceService.subscribeToPresence(widget.conversationId).listen((onlineUserIds) {
+        print('Online users updated: $onlineUserIds');
+      });
       // Set current user as online
       await _presenceService.setPresenceStatus(widget.conversationId, true);
       
@@ -299,11 +302,15 @@ class _MessageScreenState extends State<MessageScreen> {
           ),
         ],
       ),
-      body: Container(
-        decoration: BoxDecoration(
-          color: backgroundColor,
-        ),
-        child: Column(
+      body: Column(
+        children: [
+          const ConnectionStatusIndicator(),
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(
+                color: backgroundColor,
+              ),
+              child: Column(
         children: [
           Expanded(
             child: FutureBuilder<List<Message>>(
@@ -561,7 +568,10 @@ class _MessageScreenState extends State<MessageScreen> {
             ),
           ),
         ],
-      ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:messageai/data/remote/supabase_client.dart';
 
@@ -14,26 +15,62 @@ class PresenceService {
   final _supabase = SupabaseClientProvider.client;
   final Map<String, RealtimeChannel> _channels = {};
   final Map<String, Set<String>> _onlineUsers = {};
+  final Map<String, StreamController<Set<String>>> _presenceControllers = {};
 
   /// Subscribe to presence updates for a conversation
-  Future<void> subscribeToPresence(String conversationId) async {
-    if (_channels.containsKey(conversationId)) {
-      return; // Already subscribed
+  Stream<Set<String>> subscribeToPresence(String conversationId) {
+    if (_presenceControllers.containsKey(conversationId)) {
+      return _presenceControllers[conversationId]!.stream;
     }
+
+    final controller = StreamController<Set<String>>.broadcast();
+    _presenceControllers[conversationId] = controller;
 
     final channel = _supabase.realtime.channel('presence:$conversationId');
 
+    // Listen for presence state changes
+    channel.onPresenceSync(() {
+      _updateOnlineUsers(conversationId, channel);
+      if (!controller.isClosed) {
+        controller.add(getOnlineUsers(conversationId));
+      }
+    });
+
+    channel.onPresenceJoin((payload) {
+      print('User joined: $payload');
+      _updateOnlineUsers(conversationId, channel);
+      if (!controller.isClosed) {
+        controller.add(getOnlineUsers(conversationId));
+      }
+    });
+
+    channel.onPresenceLeave((payload) {
+      print('User left: $payload');
+      _updateOnlineUsers(conversationId, channel);
+      if (!controller.isClosed) {
+        controller.add(getOnlineUsers(conversationId));
+      }
+    });
+
     channel.subscribe((status, [err]) {
       print('Presence subscription status: $status');
-      if (status == 'SUBSCRIBED') {
+      if (status == RealtimeSubscribeStatus.subscribed) {
         _updateOnlineUsers(conversationId, channel);
+        if (!controller.isClosed) {
+          controller.add(getOnlineUsers(conversationId));
+        }
       }
       if (err != null) {
         print('Error subscribing to presence: $err');
+        if (!controller.isClosed) {
+          controller.addError(err);
+        }
       }
     });
 
     _channels[conversationId] = channel;
+
+    return controller.stream;
   }
 
   /// Unsubscribe from presence updates
@@ -42,6 +79,12 @@ class PresenceService {
     if (channel != null) {
       await channel.unsubscribe();
     }
+
+    final controller = _presenceControllers.remove(conversationId);
+    if (controller != null && !controller.isClosed) {
+      await controller.close();
+    }
+
     _onlineUsers.remove(conversationId);
   }
 
@@ -96,6 +139,13 @@ class PresenceService {
 
   /// Clean up all subscriptions
   Future<void> dispose() async {
+    for (final controller in _presenceControllers.values) {
+      if (!controller.isClosed) {
+        await controller.close();
+      }
+    }
+    _presenceControllers.clear();
+
     for (final channel in _channels.values) {
       try {
         await channel.unsubscribe();

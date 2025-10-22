@@ -3,6 +3,7 @@ import 'package:messageai/services/conversation_service.dart';
 import 'package:messageai/data/drift/app_db.dart';
 import 'package:messageai/features/messages/screens/message_screen.dart';
 import 'package:messageai/features/settings/screens/settings_screen.dart';
+import 'package:messageai/features/common/widgets/connection_status_indicator.dart';
 
 /// Screen showing list of conversations
 class ConversationsListScreen extends StatefulWidget {
@@ -106,7 +107,11 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
           ),
         ],
       ),
-      body: FutureBuilder<List<Conversation>>(
+      body: Column(
+        children: [
+          const ConnectionStatusIndicator(),
+          Expanded(
+            child: FutureBuilder<List<Conversation>>(
         future: _conversationsFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -264,6 +269,9 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
             },
           );
         },
+            ),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _showNewConversationDialog,
