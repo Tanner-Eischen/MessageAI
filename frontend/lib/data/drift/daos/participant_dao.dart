@@ -109,4 +109,23 @@ class ParticipantDao extends DatabaseAccessor<AppDb> with _$ParticipantDaoMixin 
       }
     });
   }
+
+  /// Mark participant as synced
+  Future<void> markParticipantAsSynced(String id) async {
+    await (update(participants)..where((p) => p.id.equals(id)))
+        .write(const ParticipantsCompanion(isSynced: Value(true)));
+  }
+
+  /// Insert participant
+  Future<void> insertParticipant(Participant participant) async {
+    await into(participants).insert(participant, mode: InsertMode.insertOrReplace);
+  }
+
+  /// Update admin status
+  Future<void> updateAdminStatus(String conversationId, String userId, bool isAdmin) async {
+    await (update(participants)
+          ..where((p) =>
+              p.conversationId.equals(conversationId) & p.userId.equals(userId)))
+        .write(ParticipantsCompanion(isAdmin: Value(isAdmin)));
+  }
 }

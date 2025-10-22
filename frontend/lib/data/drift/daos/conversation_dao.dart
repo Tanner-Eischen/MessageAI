@@ -75,4 +75,41 @@ class ConversationDao extends DatabaseAccessor<AppDb> with _$ConversationDaoMixi
     final result = await select(conversations).get();
     return result.length;
   }
+
+  /// Update invite code
+  Future<void> updateInviteCode(String conversationId, String inviteCode) async {
+    await (update(conversations)..where((c) => c.id.equals(conversationId)))
+        .write(ConversationsCompanion(inviteCode: Value(inviteCode)));
+  }
+
+  /// Get conversation by invite code
+  Future<Conversation?> getConversationByInviteCode(String inviteCode) async {
+    return (select(conversations)..where((c) => c.inviteCode.equals(inviteCode)))
+        .getSingleOrNull();
+  }
+
+  /// Update group info
+  Future<void> updateGroupInfo(
+    String conversationId, {
+    String? title,
+    String? description,
+    String? avatarUrl,
+  }) async {
+    final updates = <String, dynamic>{};
+    if (title != null) updates['title'] = title;
+    if (description != null) updates['description'] = description;
+    if (avatarUrl != null) updates['avatar_url'] = avatarUrl;
+
+    if (updates.isEmpty) return;
+
+    final companion = ConversationsCompanion(
+      title: title != null ? Value(title) : const Value.absent(),
+      description: description != null ? Value(description) : const Value.absent(),
+      avatarUrl: avatarUrl != null ? Value(avatarUrl) : const Value.absent(),
+      updatedAt: Value(DateTime.now().millisecondsSinceEpoch ~/ 1000),
+    );
+
+    await (update(conversations)..where((c) => c.id.equals(conversationId)))
+        .write(companion);
+  }
 }
