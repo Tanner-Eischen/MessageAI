@@ -1,14 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:messageai/core/env.dart';
 import 'package:messageai/data/remote/supabase_client.dart';
 import 'package:messageai/data/drift/app_db.dart';
 import 'package:messageai/state/notification_providers.dart';
 import 'package:messageai/app.dart';
+import 'firebase_options.dart';
 
 void main() async {
   // Ensure Flutter bindings are initialized
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize Firebase (required before any Firebase services)
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    print('Firebase initialized successfully');
+  } catch (e) {
+    print('Firebase initialization error: $e');
+    print('Push notifications will not work. Run "flutterfire configure" to set up Firebase.');
+  }
 
   // Validate environment configuration
   Env.validate();

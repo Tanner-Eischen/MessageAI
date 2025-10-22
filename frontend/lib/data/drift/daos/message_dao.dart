@@ -7,12 +7,27 @@ part 'message_dao.g.dart';
 class MessageDao extends DatabaseAccessor<AppDb> with _$MessageDaoMixin {
   MessageDao(AppDb db) : super(db);
 
-  /// Get all messages for a conversation ordered by creation time
+  /// Get all messages for a conversation ordered by creation time (oldest first)
   Future<List<Message>> getMessagesByConversation(String conversationId) async {
-    return (select(messages)
+    final results = await (select(messages)
           ..where((m) => m.conversationId.equals(conversationId))
           ..orderBy([(m) => OrderingTerm(expression: m.createdAt, mode: OrderingMode.asc)]))
         .get();
+    
+    // Debug: Print message order
+    if (results.isNotEmpty) {
+      print('📊 Messages loaded: ${results.length} total');
+      final firstBody = results.first.body.length > 20 
+          ? '${results.first.body.substring(0, 20)}...' 
+          : results.first.body;
+      final lastBody = results.last.body.length > 20 
+          ? '${results.last.body.substring(0, 20)}...' 
+          : results.last.body;
+      print('   First message: "$firstBody" at timestamp ${results.first.createdAt}');
+      print('   Last message: "$lastBody" at timestamp ${results.last.createdAt}');
+    }
+    
+    return results;
   }
 
   /// Get recent messages for a conversation

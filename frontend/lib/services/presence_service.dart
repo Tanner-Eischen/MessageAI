@@ -23,10 +23,30 @@ class PresenceService {
 
     final channel = _supabase.realtime.channel('presence:$conversationId');
 
+    // Listen for presence events using the 'on' method
+    channel.on(RealtimeListenTypes.presence, ChannelFilter(event: 'sync'), (payload, [ref]) {
+      print('👥 Presence sync for $conversationId');
+      _updateOnlineUsers(conversationId, channel);
+    });
+
+    channel.on(RealtimeListenTypes.presence, ChannelFilter(event: 'join'), (payload, [ref]) {
+      print('👋 User joined: ${payload['user_id'] ?? 'unknown'}');
+      _updateOnlineUsers(conversationId, channel);
+    });
+
+    channel.on(RealtimeListenTypes.presence, ChannelFilter(event: 'leave'), (payload, [ref]) {
+      print('👋 User left: ${payload['user_id'] ?? 'unknown'}');
+      _updateOnlineUsers(conversationId, channel);
+    });
+
     channel.subscribe((status, [err]) {
       print('Presence subscription status: $status');
       if (status == 'SUBSCRIBED') {
         _updateOnlineUsers(conversationId, channel);
+        // Periodically update to catch any missed events
+        Future.delayed(const Duration(seconds: 1), () {
+          _updateOnlineUsers(conversationId, channel);
+        });
       }
       if (err != null) {
         print('Error subscribing to presence: $err');
