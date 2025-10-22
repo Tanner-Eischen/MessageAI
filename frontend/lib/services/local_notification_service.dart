@@ -141,7 +141,6 @@ class LocalNotificationService {
     });
 
     // Listen for notification taps in foreground
-    _plugin.resizeImageFile = _plugin.resizeImageFile;
   }
 
   /// Request notification permissions (Android 13+)

@@ -3,8 +3,8 @@ import 'package:messageai/data/drift/app_db.dart';
 
 part 'receipt_dao.g.dart';
 
-@DriftAccessor(tables: [Receipts])
-class ReceiptDao extends DatabaseAccessor<AppDb> {
+@DriftAccessor(tables: [Receipts, Messages])
+class ReceiptDao extends DatabaseAccessor<AppDb> with _$ReceiptDaoMixin {
   ReceiptDao(AppDb db) : super(db);
 
   /// Get all receipts for a message
@@ -80,24 +80,20 @@ class ReceiptDao extends DatabaseAccessor<AppDb> {
 
   /// Get read count for a message
   Future<int> getReadCount(String messageId) async {
-    final result = await (select(receipts)
+    final countResult = await (select(receipts)
           ..where((r) =>
-              r.messageId.equals(messageId) & r.status.equals('read'))
-          ..addColumns([countAll()]))
-        .map((row) => row.read<int>(countAll()))
-        .getSingle();
-    return result;
+              r.messageId.equals(messageId) & r.status.equals('read')))
+        .get();
+    return countResult.length;
   }
 
   /// Get delivered count for a message
   Future<int> getDeliveredCount(String messageId) async {
-    final result = await (select(receipts)
+    final countResult = await (select(receipts)
           ..where((r) =>
-              r.messageId.equals(messageId) & r.status.equals('delivered'))
-          ..addColumns([countAll()]))
-        .map((row) => row.read<int>(countAll()))
-        .getSingle();
-    return result;
+              r.messageId.equals(messageId) & r.status.equals('delivered')))
+        .get();
+    return countResult.length;
   }
 
   /// Get all receipts for messages in conversation
@@ -118,11 +114,9 @@ class ReceiptDao extends DatabaseAccessor<AppDb> {
 
   /// Get unsynced receipt count
   Future<int> getUnsyncedReceiptCount() async {
-    final result = await (select(receipts)
-          ..where((r) => r.isSynced.equals(false))
-          ..addColumns([countAll()]))
-        .map((row) => row.read<int>(countAll()))
-        .getSingle();
-    return result;
+    final countResult = await (select(receipts)
+          ..where((r) => r.isSynced.equals(false)))
+        .get();
+    return countResult.length;
   }
 }

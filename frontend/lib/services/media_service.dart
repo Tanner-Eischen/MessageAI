@@ -23,9 +23,8 @@ class MediaUploadProgress {
 class MediaService {
   final Ref ref;
   
-  static const String _mediaBucket = 'message-media';
-  static const String _defaultBucketUrl = 
-      'https://project-id.supabase.co/storage/v1/object/public/message-media/';
+  static const String _mediaBucket = 'media';
+  static const String _avatarBucket = 'avatars';
   
   MediaService({required this.ref});
 
@@ -42,21 +41,26 @@ class MediaService {
   }
 
   /// Upload image to Supabase Storage
-  Future<String> uploadImage(XFile file) async {
+  Future<String> uploadImage(XFile file, {String bucket = 'media'}) async {
     final supabase = ref.watch(supabaseClientProvider);
+    final userId = supabase.auth.currentUser?.id;
+    
+    if (userId == null) {
+      throw Exception('User not authenticated');
+    }
     
     try {
       // Generate unique filename
       const uuid = Uuid();
       final fileName = '${uuid.v4()}_${p.basename(file.path)}';
-      final path = 'conversations/$fileName';
+      final path = '$userId/$fileName';
       
       // Read file bytes
       final fileBytes = await file.readAsBytes();
       
       // Upload to storage
       await supabase.storage
-          .from(_mediaBucket)
+          .from(bucket)
           .uploadBinary(
             path,
             fileBytes,
@@ -65,7 +69,7 @@ class MediaService {
       
       // Get public URL
       final url = supabase.storage
-          .from(_mediaBucket)
+          .from(bucket)
           .getPublicUrl(path);
       
       return url;
@@ -73,6 +77,11 @@ class MediaService {
       print('Error uploading image: $e');
       rethrow;
     }
+  }
+  
+  /// Upload avatar image
+  Future<String> uploadAvatar(XFile file) async {
+    return uploadImage(file, bucket: _avatarBucket);
   }
 
   /// Upload image with progress tracking

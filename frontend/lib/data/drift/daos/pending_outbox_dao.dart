@@ -4,18 +4,18 @@ import 'package:messageai/data/drift/app_db.dart';
 part 'pending_outbox_dao.g.dart';
 
 @DriftAccessor(tables: [PendingOutbox])
-class PendingOutboxDao extends DatabaseAccessor<AppDb> {
+class PendingOutboxDao extends DatabaseAccessor<AppDb> with _$PendingOutboxDaoMixin {
   PendingOutboxDao(AppDb db) : super(db);
 
   /// Get all pending operations
-  Future<List<PendingOutboxItem>> getAllPendingOperations() async {
+  Future<List<PendingOutboxData>> getAllPendingOperations() async {
     return (select(pendingOutbox)
           ..orderBy([(p) => OrderingTerm(expression: p.createdAt)]))
         .get();
   }
 
   /// Get pending operations for a specific conversation
-  Future<List<PendingOutboxItem>> getPendingOperationsByConversation(String conversationId) async {
+  Future<List<PendingOutboxData>> getPendingOperationsByConversation(String conversationId) async {
     return (select(pendingOutbox)
           ..where((p) => p.conversationId.equals(conversationId))
           ..orderBy([(p) => OrderingTerm(expression: p.createdAt)]))
@@ -29,7 +29,7 @@ class PendingOutboxDao extends DatabaseAccessor<AppDb> {
     required String payload,
     required String? conversationId,
   }) async {
-    await into(pendingOutbox).insert(PendingOutboxItemsCompanion(
+    await into(pendingOutbox).insert(PendingOutboxCompanion(
       id: Value(id),
       operation: Value(operation),
       payload: Value(payload),
@@ -50,30 +50,23 @@ class PendingOutboxDao extends DatabaseAccessor<AppDb> {
   }
 
   /// Update retry count and last error
-  Future<void> updateRetry(String id, String? errorMessage) async {
-    final item = await (select(pendingOutbox)
-          ..where((p) => p.id.equals(id)))
-        .getSingleOrNull();
-
-    if (item != null) {
-      await (update(pendingOutbox)..where((p) => p.id.equals(id)))
-          .write(PendingOutboxItemsCompanion(
-            retryCount: Value(item.retryCount + 1),
-            lastError: Value(errorMessage),
-          ));
-    }
+  Future<void> updateRetryInfo(String id, int retryCount, String? lastError) async {
+    await (update(pendingOutbox)..where((p) => p.id.equals(id)))
+        .write(PendingOutboxCompanion(
+          retryCount: Value(retryCount),
+          lastError: Value(lastError),
+        ));
   }
 
-  /// Get pending operations with retry count less than max
-  Future<List<PendingOutboxItem>> getRetryableOperations({int maxRetries = 3}) async {
+  /// Get retryable operations (with retry count < max retries)
+  Future<List<PendingOutboxData>> getRetryableOperations({int maxRetries = 3}) async {
     return (select(pendingOutbox)
-          ..where((p) => p.retryCount.isSmallerThanValue(maxRetries))
-          ..orderBy([(p) => OrderingTerm(expression: p.createdAt)]))
+          ..where((p) => p.retryCount.isSmallerThanValue(maxRetries)))
         .get();
   }
 
-  /// Get oldest pending operation (for processing)
-  Future<PendingOutboxItem?> getOldestPendingOperation() async {
+  /// Get oldest pending operation
+  Future<PendingOutboxData?> getOldestPendingOperation() async {
     return (select(pendingOutbox)
           ..orderBy([(p) => OrderingTerm(expression: p.createdAt)])
           ..limit(1))
@@ -81,37 +74,20 @@ class PendingOutboxDao extends DatabaseAccessor<AppDb> {
   }
 
   /// Get pending operations by type
-  Future<List<PendingOutboxItem>> getPendingOperationsByType(String operationType) async {
+  Future<List<PendingOutboxData>> getPendingOperationsByType(String operationType) async {
     return (select(pendingOutbox)
-          ..where((p) => p.operation.equals(operationType))
-          ..orderBy([(p) => OrderingTerm(expression: p.createdAt)]))
+          ..where((p) => p.operation.equals(operationType)))
         .get();
   }
 
-  /// Count pending operations
+  /// Clean up old pending operations (older than cutoffTime)
+  Future<int> cleanupOldOperations(int cutoffTime) async {
+    return (delete(pendingOutbox)..where((p) => p.createdAt.isSmallerThanValue(cutoffTime))).go();
+  }
+
+  /// Get pending operations count
   Future<int> getPendingOperationCount() async {
-    final result = await (select(pendingOutbox)
-          ..addColumns([countAll()]))
-        .map((row) => row.read<int>(countAll()))
-        .getSingle();
-    return result;
-  }
-
-  /// Clear all pending operations (use with caution)
-  Future<int> clearAllPendingOperations() async {
-    return delete(pendingOutbox).go();
-  }
-
-  /// Clear operations older than a certain time
-  Future<int> clearOldOperations(int secondsAgo) async {
-    final cutoffTime = (DateTime.now().millisecondsSinceEpoch ~/ 1000) - secondsAgo;
-    return (delete(pendingOutbox)..where((p) => p.createdAt.isSmallerThan(cutoffTime)))
-        .go();
-  }
-
-  /// Check if there are pending operations
-  Future<bool> hasPendingOperations() async {
-    final count = await getPendingOperationCount();
-    return count > 0;
+    final result = await select(pendingOutbox).get();
+    return result.length;
   }
 }

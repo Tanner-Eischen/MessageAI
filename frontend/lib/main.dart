@@ -19,9 +19,6 @@ void main() async {
   // Initialize Drift database
   final db = AppDb.instance;
   
-  // Run migrations (create tables if needed)
-  await db.migration.onCreate(db.executor as dynamic);
-
   // Run the app with Riverpod provider scope
   runApp(
     ProviderScope(

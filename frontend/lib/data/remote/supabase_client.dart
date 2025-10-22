@@ -20,8 +20,6 @@ class SupabaseClientProvider {
     _instance = await Supabase.initialize(
       url: Env.supabaseUrl,
       anonKey: Env.supabaseAnonKey,
-      // Enable offline support
-      persistSession: true,
       // Enable realtime
       realtimeClientOptions: const RealtimeClientOptions(
         eventsPerSecond: 10,

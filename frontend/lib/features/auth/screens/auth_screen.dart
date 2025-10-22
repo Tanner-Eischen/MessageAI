@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:messageai/services/auth_service.dart';
 
 /// Authentication screen for login/signup
 class AuthScreen extends StatefulWidget {
-  const AuthScreen({Key? key}) : super(key: key);
+  final VoidCallback onAuthSuccess;
+
+  const AuthScreen({
+    Key? key,
+    required this.onAuthSuccess,
+  }) : super(key: key);
 
   @override
   State<AuthScreen> createState() => _AuthScreenState();
@@ -12,6 +18,9 @@ class _AuthScreenState extends State<AuthScreen> {
   late TextEditingController _emailController;
   late TextEditingController _passwordController;
   bool _isLoading = false;
+  String? _errorMessage;
+  bool _isSignUp = false;
+  final _authService = AuthService();
 
   @override
   void initState() {
@@ -27,17 +36,103 @@ class _AuthScreenState extends State<AuthScreen> {
     super.dispose();
   }
 
-  void _handleLogin() {
-    setState(() => _isLoading = true);
-    // TODO: Implement authentication logic in Phase 01
-    Future.delayed(const Duration(seconds: 2), () {
+  Future<void> _handleSignIn() async {
+    if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
+      setState(() => _errorMessage = 'Please enter email and password');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      await _authService.signIn(
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
+      );
+
+      if (mounted) {
+        widget.onAuthSuccess();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _errorMessage = 'Sign in failed: ${e.toString()}');
+      }
+    } finally {
       if (mounted) {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Auth not yet implemented')),
-        );
       }
+    }
+  }
+
+  Future<void> _handleSignUp() async {
+    if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
+      setState(() => _errorMessage = 'Please enter email and password');
+      return;
+    }
+
+    // Validate email format
+    if (!_isValidEmail(_emailController.text.trim())) {
+      setState(() => _errorMessage = 'Please enter a valid email address');
+      return;
+    }
+
+    if (_passwordController.text.length < 6) {
+      setState(
+        () => _errorMessage = 'Password must be at least 6 characters',
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
     });
+
+    try {
+      await _authService.signUp(
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
+      );
+
+      if (mounted) {
+        // If email confirmation is disabled in Supabase, auto sign in
+        // Otherwise show confirmation message
+        setState(() =>
+            _errorMessage =
+                'Sign up successful! You can now sign in.');
+        // Auto sign in after signup
+        await Future.delayed(const Duration(seconds: 1));
+        if (mounted) {
+          await _handleSignIn();
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        String errorMsg = e.toString();
+        // Parse common Supabase errors
+        if (errorMsg.contains('already registered')) {
+          errorMsg = 'Email is already registered. Try signing in instead.';
+        } else if (errorMsg.contains('Password')) {
+          errorMsg = 'Password must be at least 6 characters.';
+        }
+        setState(() => _errorMessage = errorMsg);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  /// Validate email format
+  bool _isValidEmail(String email) {
+    final emailRegex = RegExp(
+      r'^[a-zA-Z0-9.]+@[a-zA-Z0-9]+\.[a-zA-Z0-9]+',
+    );
+    return emailRegex.hasMatch(email);
   }
 
   @override
@@ -60,13 +155,35 @@ class _AuthScreenState extends State<AuthScreen> {
               ),
               const SizedBox(height: 24),
               Text(
-                'Welcome to MessageAI',
+                _isSignUp ? 'Create Account' : 'Welcome to MessageAI',
                 style: Theme.of(context).textTheme.headlineSmall,
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 32),
+              if (_errorMessage != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: _errorMessage!.contains('successful')
+                          ? Colors.green.shade100
+                          : Colors.red.shade100,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      _errorMessage!,
+                      style: TextStyle(
+                        color: _errorMessage!.contains('successful')
+                            ? Colors.green.shade800
+                            : Colors.red.shade800,
+                      ),
+                    ),
+                  ),
+                ),
               TextField(
                 controller: _emailController,
+                enabled: !_isLoading,
                 decoration: InputDecoration(
                   hintText: 'Email',
                   border: OutlineInputBorder(
@@ -79,6 +196,7 @@ class _AuthScreenState extends State<AuthScreen> {
               const SizedBox(height: 16),
               TextField(
                 controller: _passwordController,
+                enabled: !_isLoading,
                 decoration: InputDecoration(
                   hintText: 'Password',
                   border: OutlineInputBorder(
@@ -92,30 +210,35 @@ class _AuthScreenState extends State<AuthScreen> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: _isLoading ? null : _handleLogin,
+                  onPressed: _isLoading
+                      ? null
+                      : (_isSignUp ? _handleSignUp : _handleSignIn),
                   child: _isLoading
                       ? const SizedBox(
                           height: 20,
                           width: 20,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Text('Sign In'),
+                      : Text(_isSignUp ? 'Sign Up' : 'Sign In'),
                 ),
               ),
               const SizedBox(height: 16),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Text("Don't have an account? "),
+                  Text(_isSignUp
+                      ? 'Already have an account? '
+                      : "Don't have an account? "),
                   TextButton(
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Sign up not yet implemented'),
-                        ),
-                      );
-                    },
-                    child: const Text('Sign Up'),
+                    onPressed: _isLoading
+                        ? null
+                        : () {
+                            setState(() {
+                              _isSignUp = !_isSignUp;
+                              _errorMessage = null;
+                            });
+                          },
+                    child: Text(_isSignUp ? 'Sign In' : 'Sign Up'),
                   ),
                 ],
               ),
