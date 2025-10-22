@@ -503,7 +503,7 @@ class _MessageScreenState extends State<MessageScreen> {
                         Icons.image,
                         color: _isUploadingImage || _isSending
                             ? Colors.grey
-                            : Theme.of(context).colorScheme.secondary,
+                            : Theme.of(context).colorScheme.primary,
                       ),
                       padding: const EdgeInsets.all(8),
                     ),
@@ -535,7 +535,7 @@ class _MessageScreenState extends State<MessageScreen> {
                     const SizedBox(width: 8),
                     Container(
                       decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.secondary,
+                        color: Theme.of(context).colorScheme.primary,
                         shape: BoxShape.circle,
                       ),
                       child: IconButton(

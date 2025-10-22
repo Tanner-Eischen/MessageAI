@@ -75,7 +75,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           )
                         : CircleAvatar(
                             radius: 50,
-                            backgroundColor: Theme.of(context).colorScheme.secondary,
+                            backgroundColor: Theme.of(context).colorScheme.primary,
                             backgroundImage: _avatarUrl != null
                                 ? NetworkImage(_avatarUrl!)
                                 : null,

@@ -10,54 +10,56 @@ class MessageAIApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Blueish slate grey with burnt yellow accents
+    // Darker burnt yellow/orange primary
     const slateBlue = Color(0xFF475569); // Slate grey-blue
     const darkSlate = Color(0xFF334155); // Darker slate
     const lightSlate = Color(0xFF64748b); // Lighter slate
-    const burntYellow = Color(0xFFD97706); // Burnt yellow/amber
-    const accentYellow = Color(0xFFF59E0B); // Brighter yellow accent
+    const burntOrange = Color(0x99C77506); // Darker burnt orange with transparency (60% opacity)
+    const burntOrangeSolid = Color(0xFFC77506); // Solid burnt orange for seeding
+    const lightBurntOrange = Color(0x4DC77506); // Very transparent burnt orange (30% opacity)
+    const mediumBurntOrange = Color(0x80C77506); // Medium transparent (50% opacity)
     
     return MaterialApp(
       title: 'MessageAI',
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: slateBlue,
-          primary: slateBlue,
-          secondary: burntYellow,
+          seedColor: burntOrangeSolid,
+          primary: burntOrange,
+          secondary: burntOrange, // Same as primary now
           brightness: Brightness.light,
         ).copyWith(
-          primaryContainer: lightSlate,
-          secondaryContainer: const Color(0xFFFEF3C7), // Light yellow
+          primaryContainer: lightBurntOrange,
+          secondaryContainer: lightBurntOrange,
         ),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: darkSlate,
+        appBarTheme: AppBarTheme(
+          backgroundColor: burntOrange,
           foregroundColor: Colors.white,
         ),
-        floatingActionButtonTheme: const FloatingActionButtonThemeData(
-          backgroundColor: burntYellow,
+        floatingActionButtonTheme: FloatingActionButtonThemeData(
+          backgroundColor: burntOrange,
           foregroundColor: Colors.white,
         ),
       ),
       darkTheme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: slateBlue,
-          primary: slateBlue,
-          secondary: burntYellow,
+          seedColor: burntOrangeSolid,
+          primary: burntOrange,
+          secondary: burntOrange, // Same as primary now
           brightness: Brightness.dark,
         ).copyWith(
           surface: const Color(0xFF1e293b), // Dark slate
           surfaceContainer: const Color(0xFF334155),
-          primaryContainer: darkSlate,
-          secondaryContainer: const Color(0xFF92400E), // Dark burnt yellow
+          primaryContainer: mediumBurntOrange, // Medium transparent burnt orange (50% opacity)
+          secondaryContainer: mediumBurntOrange,
         ),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF1e293b),
+        appBarTheme: AppBarTheme(
+          backgroundColor: burntOrange,
           foregroundColor: Colors.white,
         ),
-        floatingActionButtonTheme: const FloatingActionButtonThemeData(
-          backgroundColor: burntYellow,
+        floatingActionButtonTheme: FloatingActionButtonThemeData(
+          backgroundColor: burntOrange,
           foregroundColor: Colors.white,
         ),
       ),
