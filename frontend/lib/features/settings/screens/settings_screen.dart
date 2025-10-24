@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:messageai/data/remote/supabase_client.dart';
 import 'package:messageai/features/auth/screens/auth_screen.dart';
-import 'package:image_picker/image_picker.dart';
-import 'dart:io';
+import 'package:messageai/services/avatar_service.dart';
+import 'package:messageai/core/errors/app_error.dart';
+import 'package:messageai/core/errors/error_ui.dart';
 
 /// User settings and account management screen
 class SettingsScreen extends StatefulWidget {
@@ -12,9 +13,9 @@ class SettingsScreen extends StatefulWidget {
   State<SettingsScreen> createState() => _SettingsScreenState();
 }
 
-class _SettingsScreenState extends State<SettingsScreen> {
+class _SettingsScreenState extends State<SettingsScreen> with ErrorHandlerMixin {
   final _supabase = SupabaseClientProvider.client;
-  final _imagePicker = ImagePicker();
+  final _avatarService = AvatarService();
   bool _notificationsEnabled = true;
   bool _isLoading = false;
   bool _isUploadingAvatar = false;
@@ -100,7 +101,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                         child: IconButton(
                           icon: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
-                          onPressed: _isUploadingAvatar ? null : _uploadProfilePicture,
+                          onPressed: _isUploadingAvatar ? null : _showAvatarOptions,
                           padding: const EdgeInsets.all(8),
                           constraints: const BoxConstraints(),
                         ),
@@ -288,38 +289,87 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Future<void> _uploadProfilePicture() async {
-    try {
-      // Pick image
-      final XFile? image = await _imagePicker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 512,
-        maxHeight: 512,
-        imageQuality: 85,
-      );
+  /// Show avatar options (Gallery, Camera, Delete)
+  void _showAvatarOptions() {
+    showModalBottomSheet(
+      context: context,
+      builder: (BuildContext context) {
+        return SafeArea(
+          child: Wrap(
+            children: [
+              ListTile(
+                leading: const Icon(Icons.photo_library),
+                title: const Text('Choose from Gallery'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _uploadAvatarFromGallery();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.camera_alt),
+                title: const Text('Take Photo'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _uploadAvatarFromCamera();
+                },
+              ),
+              if (_avatarUrl != null)
+                ListTile(
+                  leading: const Icon(Icons.delete, color: Colors.red),
+                  title: const Text('Remove Photo', style: TextStyle(color: Colors.red)),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _deleteAvatar();
+                  },
+                ),
+              ListTile(
+                leading: const Icon(Icons.cancel),
+                title: const Text('Cancel'),
+                onTap: () => Navigator.pop(context),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 
+  /// Upload avatar from gallery
+  Future<void> _uploadAvatarFromGallery() async {
+    try {
+      final image = await _avatarService.pickImage();
       if (image == null) return;
 
+      await _uploadAvatar(image);
+    } on AppError catch (error) {
+      if (mounted) {
+        showError(error);
+      }
+    }
+  }
+
+  /// Upload avatar from camera
+  Future<void> _uploadAvatarFromCamera() async {
+    try {
+      final image = await _avatarService.pickImageFromCamera();
+      if (image == null) return;
+
+      await _uploadAvatar(image);
+    } on AppError catch (error) {
+      if (mounted) {
+        showError(error);
+      }
+    }
+  }
+
+  /// Upload avatar to server
+  Future<void> _uploadAvatar(image) async {
+    if (mounted) {
       setState(() => _isUploadingAvatar = true);
+    }
 
-      final userId = _supabase.auth.currentUser?.id;
-      if (userId == null) throw Exception('User not authenticated');
-
-      // Upload to storage
-      final fileBytes = await image.readAsBytes();
-      final fileName = 'avatar_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final path = '$userId/$fileName';
-
-      await _supabase.storage.from('avatars').uploadBinary(path, fileBytes);
-
-      // Get public URL
-      final url = _supabase.storage.from('avatars').getPublicUrl(path);
-
-      // Update profile in database
-      await _supabase
-          .from('profiles')
-          .update({'avatar_url': url})
-          .eq('user_id', userId);
+    try {
+      final url = await _avatarService.uploadAvatar(image);
 
       if (mounted) {
         setState(() {
@@ -328,15 +378,72 @@ class _SettingsScreenState extends State<SettingsScreen> {
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile picture updated')),
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 12),
+                Text('Profile picture updated successfully'),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
         );
       }
-    } catch (e) {
+    } on AppError catch (error) {
       if (mounted) {
         setState(() => _isUploadingAvatar = false);
+        showError(error);
+      }
+    }
+  }
+
+  /// Delete avatar
+  Future<void> _deleteAvatar() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Remove Photo'),
+        content: const Text('Are you sure you want to remove your profile picture?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _isUploadingAvatar = true);
+
+    try {
+      await _avatarService.deleteAvatar();
+
+      if (mounted) {
+        setState(() {
+          _avatarUrl = null;
+          _isUploadingAvatar = false;
+        });
+
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error uploading picture: $e')),
+          const SnackBar(content: Text('Profile picture removed')),
         );
+      }
+    } on AppError catch (error) {
+      if (mounted) {
+        setState(() => _isUploadingAvatar = false);
+        showError(error);
       }
     }
   }

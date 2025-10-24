@@ -2,72 +2,95 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:messageai/features/auth/screens/auth_screen.dart';
 import 'package:messageai/features/conversations/screens/conversations_list_screen.dart';
+import 'package:messageai/features/messages/screens/message_screen.dart';
 import 'package:messageai/state/providers.dart';
+import 'package:messageai/services/device_registration_service.dart';
+import 'package:messageai/core/theme/app_theme.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
-/// Main application widget
-class MessageAIApp extends ConsumerWidget {
+/// Global navigator key for deep linking and navigation from notifications
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+/// Main application widget with lifecycle monitoring
+class MessageAIApp extends ConsumerStatefulWidget {
   const MessageAIApp({Key? key}) : super(key: key);
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // Darker burnt yellow/orange primary
-    const slateBlue = Color(0xFF475569); // Slate grey-blue
-    const darkSlate = Color(0xFF334155); // Darker slate
-    const lightSlate = Color(0xFF64748b); // Lighter slate
-    const burntOrange = Color(0x99C77506); // Darker burnt orange with transparency (60% opacity)
-    const burntOrangeSolid = Color(0xFFC77506); // Solid burnt orange for seeding
-    const lightBurntOrange = Color(0x4DC77506); // Very transparent burnt orange (30% opacity)
-    const mediumBurntOrange = Color(0x80C77506); // Medium transparent (50% opacity)
-    
+  ConsumerState<MessageAIApp> createState() => _MessageAIAppState();
+}
+
+class _MessageAIAppState extends ConsumerState<MessageAIApp> with WidgetsBindingObserver {
+  final _deviceRegistration = DeviceRegistrationService();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // Update last_seen on app launch
+    _updateLastSeen();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // App came to foreground - update last_seen
+      _updateLastSeen();
+    }
+  }
+
+  Future<void> _updateLastSeen() async {
+    try {
+      print('⏰ Updating device last_seen...');
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token != null) {
+        await _deviceRegistration.updateDeviceLastSeen(token);
+        print('✅ Device last_seen updated');
+      } else {
+        print('⚠️ No FCM token available');
+      }
+    } catch (e) {
+      print('❌ Failed to update last_seen: $e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return MaterialApp(
       title: 'MessageAI',
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: burntOrangeSolid,
-          primary: burntOrange,
-          secondary: burntOrange, // Same as primary now
-          brightness: Brightness.light,
-        ).copyWith(
-          primaryContainer: lightBurntOrange,
-          secondaryContainer: lightBurntOrange,
-        ),
-        appBarTheme: AppBarTheme(
-          backgroundColor: burntOrange,
-          foregroundColor: Colors.white,
-        ),
-        floatingActionButtonTheme: FloatingActionButtonThemeData(
-          backgroundColor: burntOrange,
-          foregroundColor: Colors.white,
-        ),
-      ),
-      darkTheme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: burntOrangeSolid,
-          primary: burntOrange,
-          secondary: burntOrange, // Same as primary now
-          brightness: Brightness.dark,
-        ).copyWith(
-          surface: const Color(0xFF1e293b), // Dark slate
-          surfaceContainer: const Color(0xFF334155),
-          primaryContainer: mediumBurntOrange, // Medium transparent burnt orange (50% opacity)
-          secondaryContainer: mediumBurntOrange,
-        ),
-        appBarTheme: AppBarTheme(
-          backgroundColor: burntOrange,
-          foregroundColor: Colors.white,
-        ),
-        floatingActionButtonTheme: FloatingActionButtonThemeData(
-          backgroundColor: burntOrange,
-          foregroundColor: Colors.white,
-        ),
-      ),
+      navigatorKey: navigatorKey,
+      theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
       themeMode: ThemeMode.system,
       home: const AuthGate(),
       routes: {
         '/auth': (_) => AuthScreen(onAuthSuccess: () {}),
         '/conversations': (_) => const ConversationsListScreen(),
+      },
+      // ✅ Handle dynamic routes for deep linking (e.g., /conversation/:id)
+      onGenerateRoute: (settings) {
+        // Handle conversation deep links
+        if (settings.name?.startsWith('/conversation/') ?? false) {
+          final conversationId = settings.name!.split('/').last;
+          
+          print('🔗 Deep link: navigating to conversation $conversationId');
+          
+          return MaterialPageRoute(
+            builder: (_) => MessageScreen(
+              conversationId: conversationId,
+              conversationTitle: 'Chat', // Will be loaded by screen
+            ),
+            settings: settings,
+          );
+        }
+        
+        // Return null for unknown routes (will show error page)
+        return null;
       },
     );
   }

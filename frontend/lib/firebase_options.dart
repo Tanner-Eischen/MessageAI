@@ -31,10 +31,7 @@ class DefaultFirebaseOptions {
       case TargetPlatform.macOS:
         return macos;
       case TargetPlatform.windows:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for windows - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return windows;
       case TargetPlatform.linux:
         throw UnsupportedError(
           'DefaultFirebaseOptions have not been configured for linux - '
@@ -47,22 +44,24 @@ class DefaultFirebaseOptions {
     }
   }
 
-  // Placeholder values - replace with your actual Firebase configuration
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIza...',  // Replace with your web API key
-    appId: '1:...',     // Replace with your web app ID
-    messagingSenderId: '...',  // Replace with your sender ID
-    projectId: 'your-project-id',  // Replace with your project ID
-    authDomain: 'your-project-id.firebaseapp.com',
-    storageBucket: 'your-project-id.appspot.com',
+    apiKey: 'AIzaSyABa-DcxTR4T4CHlfJuy-7DKG1F_hDRNcg',
+    appId: '1:397483513751:web:3121cbb846ddd8381c56d2',
+    messagingSenderId: '397483513751',
+    projectId: 'messageai-e2e9e',
+    authDomain: 'messageai-e2e9e.firebaseapp.com',
+    storageBucket: 'messageai-e2e9e.firebasestorage.app',
+    measurementId: 'G-VCVQDFPTLV',
   );
 
+  // Placeholder values - replace with your actual Firebase configuration
+
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIza...',  // Replace with your Android API key
-    appId: '1:...',     // Replace with your Android app ID
-    messagingSenderId: '...',  // Replace with your sender ID
-    projectId: 'your-project-id',  // Replace with your project ID
-    storageBucket: 'your-project-id.appspot.com',
+    apiKey: 'AIzaSyBBc-17a_EvWPvCutNSTEV9QEB2w2DUM_4',
+    appId: '1:397483513751:android:bb838799a2cd3f7f1c56d2',
+    messagingSenderId: '397483513751',
+    projectId: 'messageai-e2e9e',
+    storageBucket: 'messageai-e2e9e.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
@@ -82,5 +81,15 @@ class DefaultFirebaseOptions {
     storageBucket: 'your-project-id.appspot.com',
     iosBundleId: 'com.example.messageai',
   );
-}
 
+  static const FirebaseOptions windows = FirebaseOptions(
+    apiKey: 'AIzaSyABa-DcxTR4T4CHlfJuy-7DKG1F_hDRNcg',
+    appId: '1:397483513751:web:ba73c764d577f4f51c56d2',
+    messagingSenderId: '397483513751',
+    projectId: 'messageai-e2e9e',
+    authDomain: 'messageai-e2e9e.firebaseapp.com',
+    storageBucket: 'messageai-e2e9e.firebasestorage.app',
+    measurementId: 'G-C6R3PHYG95',
+  );
+
+}

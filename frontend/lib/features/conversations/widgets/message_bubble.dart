@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:messageai/data/drift/app_db.dart';
+import 'package:messageai/features/messages/widgets/tone_badge.dart';
+import 'package:messageai/features/messages/widgets/tone_detail_sheet.dart';
+import 'package:messageai/state/ai_providers.dart';
 
-/// Widget to display a single message
-class MessageBubble extends StatelessWidget {
+/// Widget to display a single message with AI analysis
+class MessageBubble extends ConsumerWidget {
   final Message message;
   final bool isSent;
   final bool isLoading;
@@ -17,8 +21,11 @@ class MessageBubble extends StatelessWidget {
   }) : super(key: key);
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    
+    // Fetch AI analysis for this message
+    final analysisAsync = ref.watch(messageAnalysisProvider(message.id));
     
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -122,6 +129,25 @@ class MessageBubble extends StatelessWidget {
                           ],
                         ],
                       ),
+                    ),
+                    // AI Analysis Badge (shows tone analysis if available)
+                    analysisAsync.when(
+                      data: (analysis) {
+                        if (analysis == null) return const SizedBox.shrink();
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: ToneBadge(
+                            analysis: analysis,
+                            onTap: () => ToneDetailSheet.show(
+                              context,
+                              analysis,
+                              message.body,
+                            ),
+                          ),
+                        );
+                      },
+                      loading: () => const SizedBox.shrink(),
+                      error: (_, __) => const SizedBox.shrink(),
                     ),
                   ],
                 ),

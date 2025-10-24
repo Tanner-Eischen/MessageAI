@@ -39,19 +39,23 @@ class PresenceService {
       _updateOnlineUsers(conversationId, channel);
     });
 
-    channel.subscribe((status, [err]) {
-      print('Presence subscription status: $status');
-      if (status == 'SUBSCRIBED') {
-        _updateOnlineUsers(conversationId, channel);
-        // Periodically update to catch any missed events
-        Future.delayed(const Duration(seconds: 1), () {
+    // Subscribe with extended timeout for slower connections
+    channel.subscribe(
+      (status, [err]) {
+        print('Presence subscription status: $status');
+        if (status == 'SUBSCRIBED') {
           _updateOnlineUsers(conversationId, channel);
-        });
-      }
-      if (err != null) {
-        print('Error subscribing to presence: $err');
-      }
-    });
+          // Periodically update to catch any missed events
+          Future.delayed(const Duration(seconds: 1), () {
+            _updateOnlineUsers(conversationId, channel);
+          });
+        }
+        if (err != null) {
+          print('Error subscribing to presence: $err');
+        }
+      },
+      const Duration(seconds: 30), // Increased timeout for mobile networks
+    );
 
     _channels[conversationId] = channel;
   }
@@ -96,19 +100,27 @@ class PresenceService {
 
   void _updateOnlineUsers(String conversationId, RealtimeChannel channel) {
     try {
-      final presences = channel.presenceState().values.expand((list) => list).toList();
+      final presenceState = channel.presenceState();
       final onlineSet = <String>{};
 
-      for (final presence in presences) {
-        if (presence['online'] == true) {
-          final userId = presence['user_id'] as String?;
-          if (userId != null) {
-            onlineSet.add(userId);
+      // Iterate through all presence states
+      for (final entry in presenceState.entries) {
+        for (final presence in entry.value) {
+          // Access the payload property which contains the tracked data
+          final payload = presence.payload;
+          if (payload is Map<String, dynamic>) {
+            if (payload['online'] == true) {
+              final userId = payload['user_id'] as String?;
+              if (userId != null) {
+                onlineSet.add(userId);
+              }
+            }
           }
         }
       }
 
       _onlineUsers[conversationId] = onlineSet;
+      print('📊 Online users updated: ${onlineSet.length} users online');
     } catch (e) {
       print('Error updating online users: $e');
     }

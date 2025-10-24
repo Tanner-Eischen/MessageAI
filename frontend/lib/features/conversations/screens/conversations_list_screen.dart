@@ -3,6 +3,8 @@ import 'package:messageai/services/conversation_service.dart';
 import 'package:messageai/data/drift/app_db.dart';
 import 'package:messageai/features/messages/screens/message_screen.dart';
 import 'package:messageai/features/settings/screens/settings_screen.dart';
+import 'package:messageai/widgets/network_status_banner.dart';
+import 'package:messageai/widgets/user_avatar.dart';
 
 /// Screen showing list of conversations
 class ConversationsListScreen extends StatefulWidget {
@@ -114,9 +116,13 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: _refreshConversations,
-        child: FutureBuilder<List<Conversation>>(
+      body: Column(
+        children: [
+          const NetworkStatusBanner(),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: _refreshConversations,
+              child: FutureBuilder<List<Conversation>>(
           future: _conversationsFuture,
           builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
@@ -264,14 +270,13 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     child: Row(
                       children: [
-                        CircleAvatar(
+                        UserAvatar(
+                          fallbackText: conv.title,
                           radius: 28,
-                          backgroundColor: Theme.of(context).colorScheme.primary,
-                          child: Icon(
-                            conv.isGroup ? Icons.group : Icons.person,
-                            color: Colors.white,
-                            size: 28,
-                          ),
+                          isGroup: conv.isGroup,
+                          // Note: We don't have userId for conversation participant here
+                          // In a full implementation, we'd fetch the other user's ID
+                          // For now, fallback to initials
                         ),
                       const SizedBox(width: 16),
                       Expanded(
@@ -337,7 +342,10 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
             },
           );
           },
-        ),
+              ),
+            ),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _showNewConversationDialog,

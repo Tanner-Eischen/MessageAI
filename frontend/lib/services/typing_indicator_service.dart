@@ -73,8 +73,16 @@ class TypingIndicatorService {
       },
     );
 
-    // Subscribe to channel
-    channel.subscribe();
+    // Subscribe to channel with extended timeout
+    channel.subscribe(
+      (status, [err]) {
+        print('Typing indicator subscription status: $status');
+        if (err != null) {
+          print('Error subscribing to typing indicator: $err');
+        }
+      },
+      const Duration(seconds: 30), // Increased timeout for mobile networks
+    );
 
     return controller.stream;
   }

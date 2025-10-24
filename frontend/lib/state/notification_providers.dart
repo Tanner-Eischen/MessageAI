@@ -2,6 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:messageai/services/notification_service.dart';
 import 'package:messageai/services/local_notification_service.dart';
 import 'package:messageai/services/deep_link_handler.dart';
+import 'package:messageai/services/device_registration_service.dart';
+import 'package:messageai/app.dart' show navigatorKey;
 
 /// Device token state
 final deviceTokenProvider = StateProvider<String?>((ref) {
@@ -18,24 +20,45 @@ final localNotificationServiceProvider = Provider<LocalNotificationService>((ref
   return LocalNotificationService();
 });
 
+/// Device registration service provider
+final deviceRegistrationServiceProvider = Provider<DeviceRegistrationService>((ref) {
+  return DeviceRegistrationService();
+});
+
 /// Initialize notifications (Firebase + Local)
 final initializeNotificationsProvider = FutureProvider<void>((ref) async {
+  print('📢 ========================================');
+  print('📢 STARTING NOTIFICATION INITIALIZATION');
+  print('📢 ========================================');
+  
   final fcmService = ref.watch(notificationServiceProvider);
   final localService = ref.watch(localNotificationServiceProvider);
+  final deviceRegistrationService = ref.watch(deviceRegistrationServiceProvider);
 
+  print('📱 Initializing local notifications...');
   // Initialize local notifications first
   await localService.initialize();
+  print('✅ Local notifications initialized');
 
+  print('🔥 Initializing Firebase Messaging...');
   // Initialize Firebase Messaging
   await fcmService.initialize(
     onMessageReceived: (payload) {
       // Handle foreground message
       _handleForegroundMessage(ref, payload, localService);
     },
-    onTokenRefresh: (token) {
-      // Update device token
+    onTokenRefresh: (token) async {
+      // Update device token state
       ref.read(deviceTokenProvider.notifier).state = token;
-      print('Device token updated: $token');
+      print('🔄 Device token refreshed: ${token.substring(0, 20)}...');
+      
+      // Register refreshed token with backend
+      try {
+        await deviceRegistrationService.registerDeviceToken(token);
+        print('✅ Refreshed token registered with backend');
+      } catch (e) {
+        print('❌ Failed to register refreshed token: $e');
+      }
     },
   );
 
@@ -50,6 +73,15 @@ final initializeNotificationsProvider = FutureProvider<void>((ref) async {
   final token = await fcmService.getDeviceToken();
   if (token != null) {
     ref.read(deviceTokenProvider.notifier).state = token;
+    
+    // Register token with backend
+    try {
+      await deviceRegistrationService.registerDeviceToken(token);
+      print('✅ Initial token registered with backend');
+    } catch (e) {
+      print('❌ Failed to register initial token: $e');
+      // Don't fail initialization if registration fails
+    }
   }
 
   print('Notifications initialized successfully');
@@ -80,8 +112,27 @@ void _handleForegroundMessage(
 
 /// Handle notification tap
 void _handleNotificationTap(Ref ref, String conversationId) {
-  print('Notification tapped: $conversationId');
-  // Navigation will be handled in main.dart with DeepLinkHandler
+  print('📱 Notification tapped: $conversationId');
+  
+  try {
+    // Use the global navigator key to navigate
+    final navigator = navigatorKey.currentState;
+    
+    if (navigator == null) {
+      print('❌ Navigator not available');
+      return;
+    }
+    
+    // Navigate to conversation detail screen
+    navigator.pushNamed(
+      '/conversation/$conversationId',
+      arguments: {'title': 'Conversation'},
+    );
+    
+    print('✅ Navigated to conversation: $conversationId');
+  } catch (e) {
+    print('❌ Error navigating to conversation: $e');
+  }
 }
 
 /// Notification permission state
