@@ -861,5 +861,46 @@ BEGIN
   RAISE NOTICE '     ''a0000000-0000-0000-0000-000000000004''';
   RAISE NOTICE '   );';
   
+  -- ============================================================
+  -- EXTENDED SEED DATA: More conversations for filter showcase
+  -- ============================================================
+  
+  -- Add more unanalyzed messages to boss conversation (no tone badges)
+  INSERT INTO messages (id, conversation_id, sender_id, body, created_at, updated_at)
+  VALUES 
+    (gen_random_uuid(), v_conv_boss, v_boss_id, 'Do you have the latest metrics?', v_now - INTERVAL '30 minutes', v_now - INTERVAL '30 minutes'),
+    (gen_random_uuid(), v_conv_boss, v_user_id, 'I''ll get them for you by EOD', v_now - INTERVAL '25 minutes', v_now - INTERVAL '25 minutes'),
+    (gen_random_uuid(), v_conv_boss, v_boss_id, 'Great, thanks. Also need Q4 planning docs.', v_now - INTERVAL '20 minutes', v_now - INTERVAL '20 minutes');
+  
+  -- Add more unanalyzed messages to friend conversation (no tone badges)
+  INSERT INTO messages (id, conversation_id, sender_id, body, created_at, updated_at)
+  VALUES
+    (gen_random_uuid(), v_conv_friend, v_friend_id, 'Did you finish that book yet?', v_now - INTERVAL '15 minutes', v_now - INTERVAL '15 minutes'),
+    (gen_random_uuid(), v_conv_friend, v_user_id, 'Almost done! It''s so good', v_now - INTERVAL '12 minutes', v_now - INTERVAL '12 minutes'),
+    (gen_random_uuid(), v_conv_friend, v_friend_id, 'Right? The twist at the end was insane', v_now - INTERVAL '10 minutes', v_now - INTERVAL '10 minutes'),
+    (gen_random_uuid(), v_conv_friend, v_user_id, 'No spoilers but YES', v_now - INTERVAL '8 minutes', v_now - INTERVAL '8 minutes');
+  
+  -- Add more messages to mom conversation (no tone badges)
+  INSERT INTO messages (id, conversation_id, sender_id, body, created_at, updated_at)
+  VALUES
+    (gen_random_uuid(), v_conv_mom, v_mom_id, 'How was your day honey?', v_now - INTERVAL '2 hours', v_now - INTERVAL '2 hours'),
+    (gen_random_uuid(), v_conv_mom, v_user_id, 'Pretty good! Got a lot done', v_now - INTERVAL '1 hour 55 minutes', v_now - INTERVAL '1 hour 55 minutes'),
+    (gen_random_uuid(), v_conv_mom, v_mom_id, 'That''s wonderful sweetheart', v_now - INTERVAL '1 hour 50 minutes', v_now - INTERVAL '1 hour 50 minutes'),
+    (gen_random_uuid(), v_conv_mom, v_user_id, 'Thanks for asking!', v_now - INTERVAL '1 hour 45 minutes', v_now - INTERVAL '1 hour 45 minutes');
+  
+  -- Add more messages to client conversation (no tone badges)
+  INSERT INTO messages (id, conversation_id, sender_id, body, created_at, updated_at)
+  VALUES
+    (gen_random_uuid(), v_conv_client, v_client_id, 'When can we schedule the design review?', v_now - INTERVAL '3 hours', v_now - INTERVAL '3 hours'),
+    (gen_random_uuid(), v_conv_client, v_user_id, 'How about Thursday at 2pm?', v_now - INTERVAL '2 hours 50 minutes', v_now - INTERVAL '2 hours 50 minutes'),
+    (gen_random_uuid(), v_conv_client, v_client_id, 'Perfect! I''ll send the agenda tomorrow', v_now - INTERVAL '2 hours 45 minutes', v_now - INTERVAL '2 hours 45 minutes'),
+    (gen_random_uuid(), v_conv_client, v_user_id, 'Sounds good, looking forward to it', v_now - INTERVAL '2 hours 40 minutes', v_now - INTERVAL '2 hours 40 minutes');
+  
+  RAISE NOTICE '';
+  RAISE NOTICE '✨ Extended showcase data added:';
+  RAISE NOTICE '   • Added 16 new unanalyzed messages across all conversations';
+  RAISE NOTICE '   • These demonstrate filter functionality and message discovery';
+  RAISE NOTICE '';
+
 END $$;
 

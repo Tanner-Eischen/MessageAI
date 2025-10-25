@@ -1,9 +1,10 @@
 # MessageAI
 
-A modern, cross-platform messaging application built with Flutter and Supabase, featuring real-time messaging, typing indicators, image sharing, and offline support.
+A modern, cross-platform messaging application built with Flutter and Supabase, featuring real-time messaging, typing indicators, image sharing, offline support, and AI-powered message analysis.
 
 ## ✨ Features
 
+### Core Messaging
 - 🔐 **Secure Authentication** - Email/password authentication with Supabase
 - 💬 **Real-time Messaging** - Instant message delivery with Supabase Realtime
 - ⌨️ **Typing Indicators** - See when others are typing with animated indicators
@@ -11,9 +12,38 @@ A modern, cross-platform messaging application built with Flutter and Supabase, 
 - 👤 **Profile Pictures** - Custom avatar support with image upload
 - 📧 **Add by Email** - Add participants to conversations using email addresses
 - 📱 **Offline Support** - Queue messages when offline, auto-sync when back online
-- 🎨 **Modern UI** - Burnt orange theme 
+- 🎨 **Modern UI** - Dark/light mode support with thoughtful design
 - 📖 **Message Previews** - See the last message in each conversation
 - ✓ **Read Receipts** - Track message delivery and read status
+
+### 🤖 AI Features
+
+#### Smart Message Interpreter
+- **Tone Analysis** - Automatically detect message tone, urgency level, and intent
+- **RSD Trigger Detection** - Identify Rejection Sensitive Dysphoria triggers with reassurance
+- **Boundary Detection** - Recognize boundary violations and suggest appropriate responses
+- **Alternative Interpretations** - See multiple ways to interpret ambiguous messages
+- **Anxiety Assessment** - Understand response anxiety levels and mitigation strategies
+- **Evidence-Based Analysis** - See exactly what phrases support each analysis
+
+#### Adaptive Response Assistant (Draft Analysis)
+- **Message Feedback** - Get real-time feedback on your drafted messages
+- **Confidence Scoring** - See how confident the AI is in its analysis
+- **Social Scripts** - Get suggested templates and social scripts for various situations
+- **Situation Detection** - Automatically detect message context (declining, boundary-setting, etc.)
+- **Formatting Options** - Get suggestions for formatting and rephrasing
+
+#### Smart Inbox Filters
+- **Auto-Categorization** - Automatically categorize and prioritize messages
+- **Smart Filtering** - Filter by urgency, message type, or context
+- **Conversation Prioritization** - See the most important conversations first
+- **Follow-up Tracking** - Track action items and pending questions
+
+#### RAG Context Panel
+- **Conversation History** - Rich context from past interactions
+- **Relationship Memory** - Remember important details about relationships
+- **Safe Topics** - Track which topics are positive and safe
+- **Context-Aware Responses** - Help AI understand your preferences and patterns
 
 ## 📋 Prerequisites
 
@@ -42,6 +72,10 @@ Before you begin, ensure you have the following installed:
 6. **Supabase CLI** (optional, for local development)
    - Install: `npm install -g supabase`
 
+7. **OpenAI API Key** (for AI features)
+   - Get key from [OpenAI Platform](https://platform.openai.com/api-keys)
+   - Set as `OPENAI_API_KEY` environment variable in Supabase
+
 ## 🚀 Getting Started
 
 ### Step 1: Clone the Repository
@@ -58,7 +92,7 @@ cd MessageAI
 Create .env in backend folder and add 
    - Project URL (e.g., `https://abcdefghijk.supabase.co`)
    - `anon/public` API key
-
+   - `OPENAI_API_KEY` - Your OpenAI API key for AI features
 
 
 ### Step 3: Configure the Frontend
@@ -133,6 +167,15 @@ Create .env in backend folder and add
    - Press `R` to hot restart
    - Press `q` to quit
 
+### Load Showcase Data
+
+```bash
+cd backend
+supabase db reset
+```
+
+This loads demonstration conversations and messages showcasing all AI features.
+
 ### Build for Production
 
 **Android APK:**
@@ -166,7 +209,14 @@ flutter build ios --release --dart-define-from-file=.env.dev.json
 flutter run --dart-define-from-file=.env.dev.json
 ```
 
-#### 2. Flutter Doctor Issues
+#### 2. "API key required" Error for AI Features
+
+**Solution:** Ensure `OPENAI_API_KEY` is set in your Supabase Edge Functions environment:
+```bash
+supabase secrets set OPENAI_API_KEY=your-key-here
+```
+
+#### 3. Flutter Doctor Issues
 
 **Run:**
 ```bash
@@ -175,15 +225,16 @@ flutter doctor
 
 Follow the instructions to fix any issues (Android licenses, Xcode setup, etc.)
 
-#### 3. Android License Not Accepted
+#### 4. Android License Not Accepted
 
 **Run:**
 ```bash
 flutter doctor --android-licenses
 ```
+
 Accept all licenses when prompted.
 
-#### 4. Gradle Build Errors
+#### 5. Gradle Build Errors
 
 **Solution:**
 ```bash
@@ -194,7 +245,7 @@ flutter clean
 flutter pub get
 ```
 
-#### 5. iOS Pod Installation Errors
+#### 6. iOS Pod Installation Errors
 
 **Solution:**
 ```bash
@@ -204,13 +255,13 @@ pod install
 cd ..
 ```
 
-#### 6. Image Picker Not Working
+#### 7. Image Picker Not Working
 
 Make sure you have the required permissions in:
 - **Android:** `android/app/src/main/AndroidManifest.xml`
 - **iOS:** `ios/Runner/Info.plist`
 
-#### 7. Emulator Not Detected
+#### 8. Emulator Not Detected
 
 **Android:**
 ```bash
@@ -236,10 +287,10 @@ xcrun simctl boot <device-id>
 MessageAI/
 ├── backend/
 │   ├── supabase/
-│   │   ├── functions/         # Edge Functions
+│   │   ├── functions/         # Edge Functions (AI analysis, interpretation, etc.)
 │   │   ├── migrations/        # Database migrations
 │   │   ├── policies/          # RLS policies
-│   │   └── storage/           # Storage bucket configs
+│   │   └── seed_showcase_data.sql  # Demo data
 │   └── package.json
 ├── frontend/
 │   ├── lib/
@@ -248,6 +299,7 @@ MessageAI/
 │   │   ├── features/          # Feature modules
 │   │   ├── services/          # Business logic services
 │   │   ├── state/             # State management
+│   │   ├── models/            # Data models
 │   │   ├── app.dart           # Main app widget
 │   │   └── main.dart          # Entry point
 │   ├── android/               # Android platform code
@@ -273,6 +325,7 @@ MessageAI/
   - Authentication
   - Storage
   - Edge Functions (Deno)
+- **OpenAI GPT-4** - AI analysis and interpretation
 
 ## 📝 Environment Variables
 
@@ -283,6 +336,11 @@ Create `.env.dev.json` in the `frontend` directory:
   "SUPABASE_URL": "https://your-project-id.supabase.co",
   "SUPABASE_ANON_KEY": "your-anon-key-here"
 }
+```
+
+For backend Edge Functions, set in Supabase:
+```bash
+supabase secrets set OPENAI_API_KEY=sk-...
 ```
 
 For production, create `.env.prod.json` with production credentials.
@@ -310,6 +368,7 @@ See `frontend/OFFLINE_QUEUE_TEST.md` for detailed testing instructions.
 - **ERD**: See `docs/ERD.puml`
 - **Offline Queueing**: See `frontend/OFFLINE_QUEUE_TEST.md`
 - **API Contracts**: See `contracts/openapi.yaml`
+- **AI Features**: See `docs/AI_FEATURES.md`
 
 ## 🤝 Contributing
 
@@ -334,24 +393,52 @@ If you encounter any issues:
    - Steps to reproduce
    - Error messages/screenshots
 
-## 🎨 Color Scheme
+## 🎨 Color Scheme & AI Feature Colors
 
+**Core Theme:**
 - **Primary**: Burnt orange with transparency (`#C77506` at 60% opacity)
 - **Secondary**: Same burnt orange
 - **Accent**: Slate grey (`#475569`)
 - **Background**: Adaptive (light/dark mode)
 
+**AI Feature Colors:**
+- **Smart Message Interpreter**: Purple (`#7C3AED`)
+- **Adaptive Response Assistant**: Blue (`#06B6D4`)
+- **Smart Inbox Filters**: Indigo (`#6366F1`)
+- **RAG Context Panel**: Green (`#22C55E`)
+
 ## 🔮 Roadmap
 
+### AI Features (In Progress)
+- [x] Smart Message Interpreter with tone analysis
+- [x] RSD trigger detection
+- [x] Boundary violation detection
+- [x] Adaptive Response Assistant
+- [x] Smart Inbox Filters
+- [x] RAG Context Panel
+- [ ] Voice message analysis
+- [ ] Emotion detection from images
+- [ ] Personalized suggestion learning
+
+### Messaging
 - [ ] Voice messages
-- [ ] Video calls
-- [ ] End-to-end encryption
+- [ ] Voice/video calls
 - [ ] Message reactions
-- [ ] Group admin controls
 - [ ] Message search
 - [ ] File sharing (PDFs, documents)
 - [ ] Location sharing
+
+### Security & Privacy
+- [ ] End-to-end encryption
+- [ ] Message disappearing timers
+- [ ] Device management
+- [ ] Login activity
+
+### Platform & Scale
 - [ ] Desktop apps (Windows, macOS, Linux)
+- [ ] Web app
+- [ ] Message syncing across devices
+- [ ] Performance optimization for large conversations
 
 ## 👥 Authors
 
@@ -361,9 +448,10 @@ If you encounter any issues:
 
 - Flutter team for the amazing framework
 - Supabase for the backend infrastructure
+- OpenAI for AI capabilities
 - Community contributors
 
 ---
 
-Made with ❤️ using Flutter and Supabase
+Made with ❤️ using Flutter, Supabase, and AI
 
