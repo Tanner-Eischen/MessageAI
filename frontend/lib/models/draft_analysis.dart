@@ -51,8 +51,10 @@ class DraftAnalysis {
       contextFlags: json['context_flags'] as Map<String, dynamic>?,
       reasoning: json['reasoning'] as String?,
       
-      // Draft fields
-      confidenceScore: json['confidence_score'] as int,
+      // Draft fields - handle both int and double for confidence_score
+      confidenceScore: (json['confidence_score'] is int)
+          ? json['confidence_score'] as int
+          : (json['confidence_score'] as num).toInt(),
       appropriateness: AppropriatenessLevel.fromString(
         json['appropriateness'] as String,
       ),

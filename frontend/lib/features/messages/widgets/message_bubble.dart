@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:messageai/data/drift/app_db.dart';
 import 'package:messageai/models/ai_analysis.dart';
 import 'package:messageai/services/ai_analysis_service.dart';
@@ -112,9 +113,135 @@ class _MessageBubbleState extends State<MessageBubble> {
 
   /// Manually request AI analysis when user long-presses
   Future<void> _requestManualAnalysis() async {
+    print('📋 Long press detected - showing context menu');
+    _showContextMenu();
+  }
+
+  /// Show context menu with copy/paste and analysis options
+  void _showContextMenu() {
+    showDialog(
+      context: context,
+      barrierColor: Colors.transparent,
+      builder: (context) => GestureDetector(
+        onTap: () => Navigator.pop(context),
+        child: Material(
+          color: Colors.transparent,
+          child: Stack(
+            children: [
+              // Blur background
+              Positioned.fill(
+                child: Container(
+                  color: Colors.black.withOpacity(0.1),
+                ),
+              ),
+              // Center popup
+              Center(
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 20),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? const Color(0xFF2A2A2A)
+                        : Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.2),
+                        blurRadius: 16,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Copy button
+                      _buildContextMenuButton(
+                        context,
+                        icon: Icons.content_copy,
+                        label: 'Copy',
+                        color: Colors.blue,
+                        isFirst: true,
+                        onTap: () {
+                          Clipboard.setData(ClipboardData(text: widget.message.body));
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Copied to clipboard'),
+                              duration: Duration(seconds: 1),
+                            ),
+                          );
+                        },
+                      ),
+                      // Analyze button with sparkle icon
+                      _buildContextMenuButton(
+                        context,
+                        icon: Icons.auto_awesome,
+                        label: 'Analyze with AI',
+                        color: Colors.purple,
+                        isFirst: false,
+                        onTap: () {
+                          Navigator.pop(context);
+                          _triggerAnalysis();
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Build a context menu button
+  Widget _buildContextMenuButton(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required Color color,
+    required bool isFirst,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: !isFirst
+                ? BorderSide.none
+                : BorderSide(
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? const Color(0xFF3A3A3A)
+                        : const Color(0xFFE0E0E0),
+                  ),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color, size: 20),
+            const SizedBox(width: 12),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: color,
+                    fontWeight: FontWeight.w500,
+                  ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Trigger analysis from the context menu
+  Future<void> _triggerAnalysis() async {
+    print('✨ Analysis triggered from context menu');
     setState(() => _isAnalyzing = true);
-    
-    // 🔧 Safety net: Force close spinner after 25 seconds (20s API + 5s buffer)
+
     final safetyTimer = Timer(const Duration(seconds: 25), () {
       if (mounted && _isAnalyzing) {
         print('⚠️ Force-closing analysis spinner (safety timeout)');
@@ -128,9 +255,8 @@ class _MessageBubbleState extends State<MessageBubble> {
         );
       }
     });
-    
+
     try {
-      // 🔧 Add timeout to prevent infinite loading (20 seconds for backend processing)
       final analysis = await _aiService.requestAnalysis(
         widget.message.id,
         widget.message.body,
@@ -143,19 +269,22 @@ class _MessageBubbleState extends State<MessageBubble> {
           return null;
         },
       );
-      
+
       if (mounted) {
-        safetyTimer.cancel(); // Cancel safety timer if request completed
+        safetyTimer.cancel();
         setState(() {
           _analysisResult = analysis;
           _isAnalyzing = false;
         });
-        
-        // Show detail sheet with analysis
+
+        print('🔍 Analysis result: $analysis');
+        print('📊 Analysis not null? ${analysis != null}');
+
         if (_analysisResult != null) {
+          print('✅ Showing analysis sheet');
           _showAnalysisSheet();
         } else {
-          // Timeout or failed
+          print('❌ Analysis result is null, showing timeout message');
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('⏱️ Analysis timed out. Please try again.'),
@@ -169,6 +298,7 @@ class _MessageBubbleState extends State<MessageBubble> {
       if (mounted) {
         safetyTimer.cancel();
         setState(() => _isAnalyzing = false);
+        print('❌ Analysis error: $e');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Analysis failed: $e'),
@@ -182,18 +312,33 @@ class _MessageBubbleState extends State<MessageBubble> {
 
   /// Show the tone detail sheet
   void _showAnalysisSheet() {
-    if (_analysisResult == null) return;
+    print('📋 _showAnalysisSheet called');
+    print('   _analysisResult is null? ${_analysisResult == null}');
+    print('   _analysisResult: $_analysisResult');
     
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => ToneDetailSheet(
-        analysis: _analysisResult!,
-        messageBody: widget.message.body,
-        messageId: widget.message.id,
-      ),
-    );
+    if (_analysisResult == null) {
+      print('❌ Cannot show sheet: analysis is null');
+      return;
+    }
+    
+    try {
+      print('✅ Calling ToneDetailSheet.show()');
+      ToneDetailSheet.show(
+        context,
+        _analysisResult!,
+        widget.message.body,
+        widget.message.id,
+      );
+      print('✅ ToneDetailSheet.show() completed');
+    } catch (e) {
+      print('❌ Error showing sheet: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error showing analysis: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override

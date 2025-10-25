@@ -38,6 +38,19 @@ class _DraftFeedbackPanelState extends State<DraftFeedbackPanel> {
   bool _formattingExpanded = false;
   bool _reasoningExpanded = false;
 
+  /// Initialize state with better defaults for calming disclosure
+  @override
+  void initState() {
+    super.initState();
+    _strengthsExpanded = false; // Start collapsed for calm disclosure
+    _warningsExpanded = false; // Start collapsed
+    _suggestionsExpanded = false; // Start collapsed
+    _situationExpanded = false;
+    _templatesExpanded = false;
+    _formattingExpanded = false;
+    _reasoningExpanded = false;
+  }
+
   @override
   Widget build(BuildContext context) {
     if (widget.isLoading) {
@@ -145,53 +158,50 @@ class _DraftFeedbackPanelState extends State<DraftFeedbackPanel> {
   Widget _buildExpandedState(BuildContext context, DraftAnalysis analysis) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final confidenceColor = analysis.getConfidenceColor();
+    const primaryBlue = Color(0xFF2196F3);
+    const lightBlue = Color(0xFFE3F2FD);
 
     return Container(
-      constraints: const BoxConstraints(maxHeight: 600),
       decoration: BoxDecoration(
-        color: confidenceColor.withOpacity(0.1),
+        color: isDark ? AppTheme.darkGray100 : AppTheme.white,
         borderRadius: BorderRadius.circular(AppTheme.radiusM),
-        border: Border.all(color: confidenceColor.withOpacity(0.3)),
+        border: Border.all(
+          color: isDark ? AppTheme.darkGray300 : const Color(0xFFE0E7FF),
+          width: 1,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Header with title and controls
+          // Blue header with just the title
           Container(
             padding: const EdgeInsets.all(AppTheme.spacingM),
             decoration: BoxDecoration(
+              color: isDark ? primaryBlue.withOpacity(0.15) : lightBlue,
               border: Border(
                 bottom: BorderSide(
-                  color: confidenceColor.withOpacity(0.3),
+                  color: primaryBlue.withOpacity(0.2),
                   width: 1,
                 ),
               ),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
+                Text(
+                  'Message Check',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: AppTheme.fontWeightBold,
+                    color: primaryBlue,
+                  ),
+                ),
                 Row(
                   children: [
-                    Icon(
-                      Icons.analytics_outlined,
-                      color: confidenceColor,
-                      size: 20,
-                    ),
-                    const SizedBox(width: AppTheme.spacingXS),
-                    Text(
-                      'Draft Analysis',
-                      style: theme.textTheme.titleSmall?.copyWith(
-                        fontWeight: AppTheme.fontWeightBold,
-                        color: isDark ? AppTheme.gray200 : AppTheme.gray800,
-                      ),
-                    ),
-                    const Spacer(),
                     IconButton(
                       icon: const Icon(Icons.expand_less, size: 20),
                       onPressed: () => setState(() => _isExpanded = false),
-                      tooltip: 'Minimize',
+                      tooltip: 'Collapse',
                       padding: EdgeInsets.zero,
                       constraints: const BoxConstraints(),
                     ),
@@ -207,119 +217,201 @@ class _DraftFeedbackPanelState extends State<DraftFeedbackPanel> {
                     ],
                   ],
                 ),
-                const SizedBox(height: AppTheme.spacingS),
-                Row(
-                  children: [
-                    Icon(
-                      analysis.getAppropriatenessIcon(),
-                      color: confidenceColor,
-                      size: 20,
-                    ),
-                    const SizedBox(width: AppTheme.spacingXS),
-                    Text(
-                      '${analysis.confidenceScore}% Confidence',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        color: confidenceColor,
-                        fontWeight: AppTheme.fontWeightBold,
-                      ),
-                    ),
-                    const SizedBox(width: AppTheme.spacingS),
-                    Expanded(
-                      child: Text(
-                        '${analysis.tone} • ${analysis.appropriateness.displayName}',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: isDark ? AppTheme.gray500 : AppTheme.gray600,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
               ],
             ),
           ),
 
-          // Scrollable content with invisible scrollbar
-          Flexible(
-            child: Scrollbar(
-              thumbVisibility: false,
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(AppTheme.spacingM),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Strengths (collapsible)
-                    if (analysis.strengths.isNotEmpty) ...[
-                      _buildCollapsibleSection(
-                        context,
-                        '✅ Strengths',
-                        analysis.strengths,
-                        Colors.green,
-                        _strengthsExpanded,
-                        (expanded) => setState(() => _strengthsExpanded = expanded),
-                        showApplyButton: false,
+          // Scrollable content - works with constrained height from parent
+          Scrollbar(
+            thumbVisibility: false,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(AppTheme.spacingM),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Confidence Summary
+                  Container(
+                    padding: const EdgeInsets.all(AppTheme.spacingM),
+                    decoration: BoxDecoration(
+                      color: primaryBlue.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(AppTheme.radiusS),
+                      border: Border.all(
+                        color: primaryBlue.withOpacity(0.3),
                       ),
-                      const SizedBox(height: AppTheme.spacingS),
-                    ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              analysis.getAppropriatenessIcon(),
+                              color: primaryBlue,
+                              size: 24,
+                            ),
+                            const SizedBox(width: AppTheme.spacingS),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '${analysis.confidenceScore}% Confidence',
+                                  style: theme.textTheme.titleMedium?.copyWith(
+                                    color: primaryBlue,
+                                    fontWeight: AppTheme.fontWeightBold,
+                                  ),
+                                ),
+                                Text(
+                                  analysis.getStatusMessage(),
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: isDark ? AppTheme.gray500 : AppTheme.gray600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: AppTheme.spacingS),
+                        Text(
+                          '${analysis.tone} • ${analysis.appropriateness.displayName}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: isDark ? AppTheme.gray400 : AppTheme.gray700,
+                            fontWeight: AppTheme.fontWeightMedium,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: AppTheme.spacingL),
 
-                    // Warnings (collapsible)
-                    if (analysis.warnings.isNotEmpty) ...[
-                      _buildCollapsibleSection(
-                        context,
-                        '⚠️ Watch Out',
-                        analysis.warnings,
-                        Colors.orange,
-                        _warningsExpanded,
-                        (expanded) => setState(() => _warningsExpanded = expanded),
-                        showApplyButton: false,
-                      ),
-                      const SizedBox(height: AppTheme.spacingS),
-                    ],
-
-                    // Suggestions (collapsible)
-                    if (analysis.suggestions.isNotEmpty) ...[
-                      _buildCollapsibleSection(
-                        context,
-                        '💡 Suggestions',
-                        analysis.suggestions,
-                        Colors.blue,
-                        _suggestionsExpanded,
-                        (expanded) => setState(() => _suggestionsExpanded = expanded),
-                        showApplyButton: widget.onApplySuggestion != null,
-                      ),
-                      const SizedBox(height: AppTheme.spacingS),
-                    ],
-
-                    // Situation Detection (collapsible)
-                    if (analysis.situationDetection != null) ...[
-                      _buildCollapsibleSituationSection(context, analysis),
-                      const SizedBox(height: AppTheme.spacingS),
-                    ],
-
-                    // Suggested Templates (collapsible)
-                    if (analysis.suggestedTemplates != null &&
-                        analysis.suggestedTemplates!.isNotEmpty) ...[
-                      _buildCollapsibleTemplatesSection(context, analysis),
-                      const SizedBox(height: AppTheme.spacingS),
-                    ],
-
-                    // Message Formatting (collapsible)
-                    if (widget.draftMessage != null && widget.draftMessage!.length > 500) ...[
-                      _buildCollapsibleFormattingSection(context),
-                      const SizedBox(height: AppTheme.spacingS),
-                    ],
-
-                    // Reasoning (collapsible)
-                    if (analysis.reasoning != null && analysis.reasoning!.isNotEmpty) ...[
-                      _buildCollapsibleReasoningSection(context, analysis),
-                    ],
+                  // Strengths (START COLLAPSED)
+                  if (analysis.strengths.isNotEmpty) ...[
+                    _buildCollapsibleSection(
+                      context,
+                      '✅ Strengths',
+                      analysis.strengths,
+                      Colors.green,
+                      _strengthsExpanded,
+                      (expanded) => setState(() => _strengthsExpanded = expanded),
+                      showApplyButton: false,
+                    ),
+                    const SizedBox(height: AppTheme.spacingL),
                   ],
-                ),
+
+                  // Warnings (START COLLAPSED)
+                  if (analysis.warnings.isNotEmpty) ...[
+                    _buildCollapsibleSection(
+                      context,
+                      '⚠️ Things to Consider',
+                      analysis.warnings,
+                      Colors.orange.withOpacity(0.8),
+                      _warningsExpanded,
+                      (expanded) => setState(() => _warningsExpanded = expanded),
+                      showApplyButton: false,
+                    ),
+                    const SizedBox(height: AppTheme.spacingL),
+                  ],
+
+                  // Suggestions (START COLLAPSED - BLUE)
+                  if (analysis.suggestions.isNotEmpty) ...[
+                    _buildCollapsibleSection(
+                      context,
+                      '💡 Suggestions',
+                      analysis.suggestions,
+                      primaryBlue,
+                      _suggestionsExpanded,
+                      (expanded) => setState(() => _suggestionsExpanded = expanded),
+                      showApplyButton: widget.onApplySuggestion != null,
+                    ),
+                    const SizedBox(height: AppTheme.spacingL),
+                  ],
+
+                  // Situation Detection (START COLLAPSED)
+                  if (analysis.situationDetection != null) ...[
+                    _buildCollapsibleSituationSection(context, analysis),
+                    const SizedBox(height: AppTheme.spacingL),
+                  ],
+
+                  // Suggested Templates (START COLLAPSED)
+                  if (analysis.suggestedTemplates != null &&
+                      analysis.suggestedTemplates!.isNotEmpty) ...[
+                    _buildCollapsibleTemplatesSection(context, analysis),
+                    const SizedBox(height: AppTheme.spacingL),
+                  ] else ...[
+                    // Placeholder when no templates
+                    _buildEmptyState(
+                      context,
+                      icon: Icons.note_alt_outlined,
+                      title: 'No Templates',
+                      description: 'Templates will appear based on your message context',
+                    ),
+                    const SizedBox(height: AppTheme.spacingL),
+                  ],
+
+                  // Message Formatting (START COLLAPSED)
+                  if (widget.draftMessage != null && widget.draftMessage!.length > 500) ...[
+                    _buildCollapsibleFormattingSection(context),
+                    const SizedBox(height: AppTheme.spacingL),
+                  ],
+
+                  // Reasoning (START COLLAPSED)
+                  if (analysis.reasoning != null && analysis.reasoning!.isNotEmpty) ...[
+                    _buildCollapsibleReasoningSection(context, analysis),
+                  ],
+                ],
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Build empty state placeholder
+  Widget _buildEmptyState(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required String description,
+  }) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Container(
+      padding: const EdgeInsets.all(AppTheme.spacingM),
+      decoration: BoxDecoration(
+        color: (isDark ? AppTheme.darkGray200 : AppTheme.gray100),
+        borderRadius: BorderRadius.circular(AppTheme.radiusS),
+        border: Border.all(
+          color: isDark ? AppTheme.darkGray300 : AppTheme.gray300,
+        ),
+      ),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 32,
+              color: isDark ? AppTheme.gray500 : AppTheme.gray400,
+            ),
+            const SizedBox(height: AppTheme.spacingS),
+            Text(
+              title,
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: isDark ? AppTheme.gray500 : AppTheme.gray600,
+              ),
+            ),
+            const SizedBox(height: AppTheme.spacingXXS),
+            Text(
+              description,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: isDark ? AppTheme.gray600 : AppTheme.gray500,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -357,7 +449,7 @@ class _DraftFeedbackPanelState extends State<DraftFeedbackPanel> {
           ),
           initiallyExpanded: isExpanded,
           onExpansionChanged: onExpansionChanged,
-          leading: Icon(Icons.check_circle_outline, size: 16, color: color),
+          leading: Icon(Icons.verified_outlined, size: 16, color: color),
           title: Row(
             children: [
               Expanded(
@@ -587,7 +679,7 @@ class _DraftFeedbackPanelState extends State<DraftFeedbackPanel> {
                   child: Row(
                     children: [
                       Icon(
-                        Icons.check_circle_outline,
+                        Icons.verified_outlined,
                         size: 14,
                         color: color,
                       ),

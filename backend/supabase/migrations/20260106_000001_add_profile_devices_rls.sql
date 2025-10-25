@@ -37,3 +37,5 @@ CREATE POLICY "Users can delete their own devices"
   FOR DELETE
   USING (auth.uid() = user_id);
 
+
+
