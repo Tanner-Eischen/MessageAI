@@ -64,7 +64,6 @@ class MediaService {
           .uploadBinary(
             path,
             fileBytes,
-            fileOptions: const FileOptions(cacheControl: '3600'),
           );
       
       // Get public URL
@@ -111,7 +110,6 @@ class MediaService {
           .uploadBinary(
             path,
             fileBytes,
-            fileOptions: const FileOptions(cacheControl: '3600'),
           );
       
       bytesTransferred = totalBytes;

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:messageai/services/auth_service.dart';
+import 'package:messageai/core/errors/app_error.dart';
+import 'package:messageai/core/errors/error_ui.dart';
 
 /// Authentication screen for login/signup
 class AuthScreen extends StatefulWidget {
@@ -14,11 +16,10 @@ class AuthScreen extends StatefulWidget {
   State<AuthScreen> createState() => _AuthScreenState();
 }
 
-class _AuthScreenState extends State<AuthScreen> {
+class _AuthScreenState extends State<AuthScreen> with ErrorHandlerMixin {
   late TextEditingController _emailController;
   late TextEditingController _passwordController;
   bool _isLoading = false;
-  String? _errorMessage;
   bool _isSignUp = false;
   final _authService = AuthService();
 
@@ -38,14 +39,20 @@ class _AuthScreenState extends State<AuthScreen> {
 
   Future<void> _handleSignIn() async {
     if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
-      setState(() => _errorMessage = 'Please enter email and password');
+      ErrorUI.showErrorSnackbar(
+        context,
+        AppError(
+          category: ErrorCategory.validation,
+          severity: ErrorSeverity.warning,
+          code: 'VAL001',
+          message: 'Please enter email and password',
+          userMessage: 'Please enter both email and password',
+        ),
+      );
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
+    setState(() => _isLoading = true);
 
     try {
       await _authService.signIn(
@@ -56,9 +63,9 @@ class _AuthScreenState extends State<AuthScreen> {
       if (mounted) {
         widget.onAuthSuccess();
       }
-    } catch (e) {
+    } on AppError catch (error) {
       if (mounted) {
-        setState(() => _errorMessage = 'Sign in failed: ${e.toString()}');
+        showError(error, onRetry: _handleSignIn);
       }
     } finally {
       if (mounted) {
@@ -68,28 +75,38 @@ class _AuthScreenState extends State<AuthScreen> {
   }
 
   Future<void> _handleSignUp() async {
+    // Validation
     if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
-      setState(() => _errorMessage = 'Please enter email and password');
-      return;
-    }
-
-    // Validate email format
-    if (!_isValidEmail(_emailController.text.trim())) {
-      setState(() => _errorMessage = 'Please enter a valid email address');
-      return;
-    }
-
-    if (_passwordController.text.length < 6) {
-      setState(
-        () => _errorMessage = 'Password must be at least 6 characters',
+      ErrorUI.showErrorSnackbar(
+        context,
+        AppError(
+          category: ErrorCategory.validation,
+          severity: ErrorSeverity.warning,
+          code: 'VAL001',
+          message: 'Please enter email and password',
+          userMessage: 'Please enter both email and password',
+        ),
       );
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
+    if (!_isValidEmail(_emailController.text.trim())) {
+      ErrorUI.showErrorSnackbar(
+        context,
+        AuthError.invalidEmail(),
+      );
+      return;
+    }
+
+    if (_passwordController.text.length < 6) {
+      ErrorUI.showErrorSnackbar(
+        context,
+        AuthError.weakPassword(),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
 
     try {
       await _authService.signUp(
@@ -98,27 +115,30 @@ class _AuthScreenState extends State<AuthScreen> {
       );
 
       if (mounted) {
-        // If email confirmation is disabled in Supabase, auto sign in
-        // Otherwise show confirmation message
-        setState(() =>
-            _errorMessage =
-                'Sign up successful! You can now sign in.');
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 12),
+                Text('Sign up successful! Signing you in...'),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+        
         // Auto sign in after signup
         await Future.delayed(const Duration(seconds: 1));
         if (mounted) {
           await _handleSignIn();
         }
       }
-    } catch (e) {
+    } on AppError catch (error) {
       if (mounted) {
-        String errorMsg = e.toString();
-        // Parse common Supabase errors
-        if (errorMsg.contains('already registered')) {
-          errorMsg = 'Email is already registered. Try signing in instead.';
-        } else if (errorMsg.contains('Password')) {
-          errorMsg = 'Password must be at least 6 characters.';
-        }
-        setState(() => _errorMessage = errorMsg);
+        showError(error, onRetry: _handleSignUp);
       }
     } finally {
       if (mounted) {
@@ -160,27 +180,6 @@ class _AuthScreenState extends State<AuthScreen> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 32),
-              if (_errorMessage != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: _errorMessage!.contains('successful')
-                          ? Colors.green.shade100
-                          : Colors.red.shade100,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      _errorMessage!,
-                      style: TextStyle(
-                        color: _errorMessage!.contains('successful')
-                            ? Colors.green.shade800
-                            : Colors.red.shade800,
-                      ),
-                    ),
-                  ),
-                ),
               TextField(
                 controller: _emailController,
                 enabled: !_isLoading,
@@ -235,7 +234,8 @@ class _AuthScreenState extends State<AuthScreen> {
                         : () {
                             setState(() {
                               _isSignUp = !_isSignUp;
-                              _errorMessage = null;
+                              // Clear any previous error messages when switching modes
+                              ScaffoldMessenger.of(context).hideCurrentSnackBar();
                             });
                           },
                     child: Text(_isSignUp ? 'Sign In' : 'Sign Up'),

@@ -40,19 +40,10 @@ class PresenceManager {
     final supabase = ref.watch(supabaseClientProvider);
     
     // Subscribe to presence channel
-    final presence = supabase.channel('presence:$conversationId').onPresenceSync(
-      (_) {
-        print('Presence synced for $conversationId');
-      },
-    ).onPresenceChange(
-      PresenceAction.sync,
-      (_) {
-        print('Presence state changed for $conversationId');
-      },
-    );
+    final presence = supabase.channel('presence:$conversationId');
 
     // Subscribe to presence channel
-    await presence.subscribe(
+    presence.subscribe(
       (status, [err]) {
         print('Presence subscription: $status - $err');
       },

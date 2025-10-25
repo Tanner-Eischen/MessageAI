@@ -21,8 +21,10 @@ class SupabaseClientProvider {
       url: Env.supabaseUrl,
       anonKey: Env.supabaseAnonKey,
       // Enable realtime
+      // Note: The underlying realtime_client has heartbeat enabled by default (30s)
       realtimeClientOptions: const RealtimeClientOptions(
         eventsPerSecond: 10,
+        logLevel: RealtimeLogLevel.info, // Enable logging for diagnostics
       ),
     );
   }

@@ -53,7 +53,8 @@ class TypingManager {
     final presence = supabase.channel('typing:$conversationId');
     
     try {
-      await presence.subscribe(
+      // Subscribe to the channel (returns void, no await needed)
+      presence.subscribe(
         (status, [err]) {
           print('Typing subscription: $status - $err');
         },

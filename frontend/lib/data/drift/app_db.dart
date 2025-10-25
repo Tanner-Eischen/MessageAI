@@ -5,6 +5,9 @@ import 'package:messageai/data/drift/daos/message_dao.dart';
 import 'package:messageai/data/drift/daos/receipt_dao.dart';
 import 'package:messageai/data/drift/daos/participant_dao.dart';
 import 'package:messageai/data/drift/daos/pending_outbox_dao.dart';
+// AI Analysis DAO commented out (using remote-only approach)
+// Uncomment and restore from backup files when scaling to local cache
+// import 'package:messageai/data/drift/daos/ai_analysis_dao.dart';
 
 part 'app_db.g.dart';
 
@@ -90,7 +93,28 @@ class PendingOutbox extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+// AI Analysis table commented out for now (using remote-only approach)
+// Uncomment and restore from backup files when scaling to local cache
+/*
+class AiAnalysis extends Table {
+  TextColumn get id => text()();
+  TextColumn get messageId => text()();
+  TextColumn get tone => text()();
+  TextColumn get urgencyLevel => text().nullable()();
+  TextColumn get intent => text().nullable()();
+  RealColumn get confidenceScore => real().nullable()();
+  IntColumn get analysisTimestamp => integer()();
+  BoolColumn get isSynced => boolean().withDefault(const Constant(false))();
+  IntColumn get createdAt => integer()();
+  IntColumn get updatedAt => integer()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+*/
+
 // Main database class
+// Note: AiAnalysis table and AIAnalysisDao commented out (using remote-only approach)
 @DriftDatabase(
   tables: [Conversations, Messages, Participants, Receipts, PendingOutbox],
   daos: [ConversationDao, MessageDao, ReceiptDao, ParticipantDao, PendingOutboxDao],
@@ -99,7 +123,7 @@ class AppDb extends _$AppDb {
   AppDb() : super(_openConnection());
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 1; // Reverted to 1 (AI table removed)
 
   @override
   MigrationStrategy get migration {
@@ -108,7 +132,10 @@ class AppDb extends _$AppDb {
         await m.createAll();
       },
       onUpgrade: (Migrator m, int from, int to) async {
-        // Handle schema migrations here
+        // AI Analysis migration commented out (using remote-only approach)
+        // if (from == 1 && to == 2) {
+        //   await m.createTable(aiAnalysis);
+        // }
       },
     );
   }

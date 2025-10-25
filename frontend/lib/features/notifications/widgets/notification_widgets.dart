@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:messageai/state/notification_providers.dart';
-import 'package:messageai/services/notification_service.dart';
+import 'package:messageai/services/notification_service.dart' hide notificationServiceProvider;
 
 /// Widget to request notification permissions
 class NotificationPermissionRequest extends ConsumerWidget {
@@ -225,7 +225,7 @@ class NotificationSettingsBottomSheet extends ConsumerWidget {
           // Permission status
           ListTile(
             leading: Icon(
-              hasPermission ? Icons.check_circle : Icons.error_circle,
+              hasPermission ? Icons.check_circle : Icons.cancel,
               color: hasPermission ? Colors.green : Colors.red,
             ),
             title: const Text('Notifications'),

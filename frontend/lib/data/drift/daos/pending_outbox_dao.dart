@@ -90,4 +90,10 @@ class PendingOutboxDao extends DatabaseAccessor<AppDb> with _$PendingOutboxDaoMi
     final result = await select(pendingOutbox).get();
     return result.length;
   }
+
+  /// Check if there are any pending operations
+  Future<bool> hasPendingOperations() async {
+    final count = await getPendingOperationCount();
+    return count > 0;
+  }
 }

@@ -41,13 +41,20 @@ class NotificationService {
     required Function(NotificationPayload) onMessageReceived,
     required Function(String) onTokenRefresh,
   }) async {
+    print('🔔 ========================================');
+    print('🔔 INITIALIZING FIREBASE MESSAGING');
+    print('🔔 ========================================');
+    
     // Skip Firebase Messaging on web due to compatibility issues
     if (kIsWeb) {
-      print('Firebase Messaging not supported on web platform');
+      print('⚠️  Firebase Messaging not supported on web platform');
       return;
     }
     
+    print('📱 Platform: Mobile (FCM supported)');
+    
     try {
+      print('📝 Requesting notification permissions...');
       // Request notification permissions
       final settings = await _messaging.requestPermission(
         alert: true,
@@ -58,11 +65,17 @@ class NotificationService {
         sound: true,
       );
 
-      print('User granted notification permission: ${settings.authorizationStatus}');
+      print('✅ Permission status: ${settings.authorizationStatus}');
 
       // Get initial token
+      print('📱 Getting FCM device token...');
       final token = await getDeviceToken();
-      print('FCM Token: $token');
+      if (token != null) {
+        print('✅ FCM Token obtained: ${token.substring(0, 50)}...');
+        print('   Full token: $token');
+      } else {
+        print('⚠️  No FCM token obtained');
+      }
 
       // Listen for token refresh
       FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
@@ -87,8 +100,13 @@ class NotificationService {
 
       // Handle background message (top-level function)
       // This should be registered before the app starts
-    } catch (e) {
-      print('Error initializing Firebase Messaging: $e');
+    } catch (e, stackTrace) {
+      print('❌ ========================================');
+      print('❌ ERROR INITIALIZING FIREBASE MESSAGING');
+      print('❌ ========================================');
+      print('Error: $e');
+      print('Stack trace: $stackTrace');
+      print('❌ ========================================');
     }
   }
 
