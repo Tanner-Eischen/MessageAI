@@ -6,20 +6,14 @@ import 'package:messageai/services/realtime_message_service.dart';
 import 'package:messageai/services/typing_indicator_service.dart';
 import 'package:messageai/services/context_preloader_service.dart';
 import 'package:messageai/data/drift/app_db.dart';
-import 'package:messageai/data/drift/daos/receipt_dao.dart';
 import 'package:messageai/data/remote/supabase_client.dart';
-import 'package:messageai/widgets/user_avatar.dart';
-import 'package:messageai/widgets/sliding_panel.dart';
 import 'package:messageai/features/messages/widgets/message_list_panel.dart';
-import 'package:messageai/features/messages/widgets/ai_insights_panel.dart';
-import 'package:messageai/features/conversations/widgets/context_preview_card.dart';
-import 'package:messageai/features/conversations/widgets/who_is_this_button.dart';
+import 'package:messageai/features/messages/widgets/context_panel.dart';
 import 'package:messageai/models/conversation_context.dart';
 import 'package:messageai/core/theme/app_theme.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:async';
-import 'dart:io';
 
 class MessageScreen extends StatefulWidget {
   final String conversationId;
@@ -81,6 +75,10 @@ class _MessageScreenState extends State<MessageScreen> {
     
     // Mark messages as read when opening conversation
     _messagesFuture.then((_) => _markMessagesAsRead());
+    
+    // 🗑️ REMOVED: Auto-analysis should NOT run automatically
+    // Analysis is now ONLY triggered by user manually long-pressing a message
+    // (See MessageBubble widget for manual trigger)
     
     // Listen for text changes to send typing indicators
     _messageController.addListener(_onTextChanged);
@@ -410,160 +408,252 @@ class _MessageScreenState extends State<MessageScreen> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     
-    return Scaffold(
-      backgroundColor: isDark ? AppTheme.darkGray200 : AppTheme.gray50,
-      appBar: AppBar(
-        title: Row(
-          children: [
-            Stack(
-              children: [
-                CircleAvatar(
-                  radius: 18,
-                  backgroundColor: Colors.grey[300],
-                  child: Icon(
-                    Icons.group,
-                    size: 20,
-                    color: Colors.grey[700],
-                  ),
-                ),
-                if (_onlineUsers.isNotEmpty)
-                  Positioned(
-                    right: 0,
-                    bottom: 0,
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        color: Colors.green,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2),
-                      ),
-                      child: Text(
-                        '${_onlineUsers.length}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+    return WillPopScope(
+      // 🔧 Always allow back navigation, even during analysis
+      onWillPop: () async {
+        Navigator.of(context).pop();
+        return false; // We handle the pop manually
+      },
+      child: Scaffold(
+        backgroundColor: isDark ? AppTheme.darkGray200 : AppTheme.gray50,
+        appBar: AppBar(
+          title: Row(
+            children: [
+              Stack(
                 children: [
-                  Text(
-                    widget.conversationTitle,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
+                  CircleAvatar(
+                    radius: 18,
+                    backgroundColor: Colors.grey[300],
+                    child: Icon(
+                      Icons.group,
+                      size: 20,
+                      color: Colors.grey[700],
                     ),
                   ),
                   if (_onlineUsers.isNotEmpty)
-                    Text(
-                      '${_onlineUsers.length} online',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.white.withOpacity(0.8),
+                    Positioned(
+                      right: 0,
+                      bottom: 0,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Colors.green,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                        ),
+                        child: Text(
+                          '${_onlineUsers.length}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
                     ),
                 ],
               ),
-            ),
-          ],
-        ),
-        elevation: 1,
-        actions: [
-          WhoIsThisButton(
-            conversationId: widget.conversationId,
-            compact: true,
-          ),
-          IconButton(
-            icon: const Icon(Icons.person_add),
-            onPressed: _showAddParticipantsDialog,
-            tooltip: 'Add participants',
-          ),
-          IconButton(
-            icon: const Icon(Icons.more_vert),
-            onPressed: () => _showParticipantsInfo(context),
-            tooltip: 'Options',
-          ),
-        ],
-      ),
-      body: FutureBuilder<List<Message>>(
-        future: _messagesFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          if (snapshot.hasError) {
-            return Center(
-              child: Text(
-                'Error: ${snapshot.error}',
-                style: theme.textTheme.bodyMedium,
-              ),
-            );
-          }
-
-          final messages = snapshot.data ?? [];
-
-          return Column(
-            children: [
-              // Context Preview at top
-              if (_conversationContext != null)
-                ContextPreviewCard(
-                  context: _conversationContext!,
-                  onTap: () {
-                    // Could expand to show more details or scroll
-                  },
-                ),
-              
-              // Main message area
+              const SizedBox(width: 12),
               Expanded(
-                child: Stack(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Background: AI Insights Panel
-                    AIInsightsPanel(
-                      conversationId: widget.conversationId,
-                      messages: messages,
-                      panelPosition: _panelPosition,
-                    ),
-                    
-                    // Foreground: Sliding Message Panel
-                    SlidingPanel(
-                      onSlide: (position) {
-                        setState(() {
-                          _panelPosition = position;
-                        });
-                      },
-                      child: MessageListPanel(
-                        messages: messages,
-                        currentUserId: _currentUserId,
-                        receiptsCache: _receiptsCache,
-                        typingUsers: _typingUsers,
-                        onlineUsers: _onlineUsers,
-                        messageController: _messageController,
-                        isSending: _isSending,
-                        isUploadingImage: _isUploadingImage,
-                        selectedImage: _selectedImage,
-                        onSendMessage: _sendMessage,
-                        onPickImage: _pickImage,
-                        onClearImage: () {
-                          setState(() {
-                            _selectedImage = null;
-                          });
-                        },
+                    Text(
+                      widget.conversationTitle,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
+                    if (_onlineUsers.isNotEmpty)
+                      Text(
+                        '${_onlineUsers.length} online',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.white.withOpacity(0.8),
+                        ),
+                      ),
                   ],
                 ),
               ),
             ],
-          );
-        },
+          ),
+          elevation: 1,
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.person_add),
+              onPressed: _showAddParticipantsDialog,
+              tooltip: 'Add participants',
+            ),
+            IconButton(
+              icon: const Icon(Icons.more_vert),
+              onPressed: () => _showParticipantsInfo(context),
+              tooltip: 'Options',
+            ),
+          ],
+        ),
+        body: FutureBuilder<List<Message>>(
+          future: _messagesFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            if (snapshot.hasError) {
+              return Center(
+                child: Text(
+                  'Error: ${snapshot.error}',
+                  style: theme.textTheme.bodyMedium,
+                ),
+              );
+            }
+
+            final messages = snapshot.data ?? [];
+
+            return Column(
+              children: [
+                // Context Panel at top - shows relationship context
+                ContextPanel(
+                  conversationId: widget.conversationId,
+                  context: _conversationContext,
+                ),
+                
+                // Main area: Message list with sliding overlay
+                Expanded(
+                  child: Stack(
+                    children: [
+                      // Background: Message list
+                      Container(
+                        color: Theme.of(context).brightness == Brightness.dark 
+                          ? AppTheme.darkGray200 
+                          : AppTheme.gray50,
+                        child: CustomScrollView(
+                          slivers: [
+                            SliverFillRemaining(
+                              child: Container(),
+                            ),
+                          ],
+                        ),
+                      ),
+                      
+                      // Foreground: Sliding message panel (bottom fixed, top slides)
+                      Align(
+                        alignment: Alignment.bottomCenter,
+                        child: GestureDetector(
+                          onVerticalDragUpdate: (details) {
+                            setState(() {
+                              // Convert drag to panel height (inverted - drag down = smaller)
+                              final screenHeight = MediaQuery.of(context).size.height;
+                              final delta = -details.delta.dy / screenHeight;
+                              _panelPosition = (_panelPosition + delta).clamp(0.12, 1.0);
+                            });
+                          },
+                          onVerticalDragEnd: (details) {
+                            // Snap to nearest position
+                            setState(() {
+                              if (_panelPosition < 0.18) {
+                                _panelPosition = 0.12; // Minimized - just input + handle
+                              } else if (_panelPosition < 0.4) {
+                                _panelPosition = 0.3; // Small peek
+                              } else if (_panelPosition < 0.65) {
+                                _panelPosition = 0.5; // Half
+                              } else if (_panelPosition < 0.9) {
+                                _panelPosition = 0.85; // Most
+                              } else {
+                                _panelPosition = 1.0; // Full
+                              }
+                            });
+                          },
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            curve: Curves.easeOut,
+                            height: MediaQuery.of(context).size.height * _panelPosition,
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              color: isDark ? AppTheme.black : AppTheme.white,
+                              borderRadius: const BorderRadius.only(
+                                topLeft: Radius.circular(16),
+                                topRight: Radius.circular(16),
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.3),
+                                  blurRadius: 20,
+                                  spreadRadius: 5,
+                                  offset: const Offset(0, -5),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              children: [
+                                // Drag handle at TOP
+                                InkWell(
+                                  onTap: () {
+                                    setState(() {
+                                      // Cycle through positions
+                                      if (_panelPosition >= 1.0) {
+                                        _panelPosition = 0.85; // Most
+                                      } else if (_panelPosition >= 0.85) {
+                                        _panelPosition = 0.5; // Half
+                                      } else if (_panelPosition >= 0.5) {
+                                        _panelPosition = 0.3; // Peek
+                                      } else if (_panelPosition >= 0.3) {
+                                        _panelPosition = 0.12; // Minimized
+                                      } else {
+                                        _panelPosition = 1.0; // Full
+                                      }
+                                    });
+                                  },
+                                  child: Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.symmetric(vertical: AppTheme.spacingM),
+                                    child: Center(
+                                      child: Container(
+                                        width: 40,
+                                        height: 5,
+                                        decoration: BoxDecoration(
+                                          color: isDark ? AppTheme.gray600 : AppTheme.gray400,
+                                          borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                
+                                // Message list
+                                Expanded(
+                                  child: MessageListPanel(
+                                    messages: messages,
+                                    currentUserId: _currentUserId,
+                                    receiptsCache: _receiptsCache,
+                                    typingUsers: _typingUsers,
+                                    onlineUsers: _onlineUsers,
+                                    messageController: _messageController,
+                                    isSending: _isSending,
+                                    isUploadingImage: _isUploadingImage,
+                                    selectedImage: _selectedImage,
+                                    onSendMessage: _sendMessage,
+                                    onPickImage: _pickImage,
+                                    onClearImage: () {
+                                      setState(() {
+                                        _selectedImage = null;
+                                      });
+                                    },
+                                    showComposeBar: true,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
       ),
     );
   }

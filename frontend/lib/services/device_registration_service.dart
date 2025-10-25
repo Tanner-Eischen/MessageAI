@@ -29,14 +29,11 @@ class DeviceRegistrationService {
       print('   Platform: $platform');
       print('   Token: ${token.substring(0, 20)}...');
       
-      // Upsert device (insert or update if token already exists)
-      // This handles both new registrations and token refreshes
-      await supabase.from('profile_devices').upsert({
-        'user_id': userId,
-        'fcm_token': token,
-        'platform': platform,
-        'last_seen': DateTime.now().toIso8601String(),
-      }, onConflict: 'fcm_token');
+      // Use secure function to bypass RLS issues
+      await supabase.rpc('upsert_device_token', params: {
+        'p_fcm_token': token,
+        'p_platform': platform,
+      });
       
       print('✅ Device token registered successfully!');
     } catch (e) {

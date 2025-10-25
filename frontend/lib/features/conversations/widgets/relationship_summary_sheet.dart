@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:messageai/models/relationship_profile.dart';
 import 'package:messageai/models/safe_topic.dart';
 import 'package:messageai/services/relationship_service.dart';
+import 'package:messageai/state/ai_providers.dart';
 
 /// Bottom sheet showing relationship profile
 class RelationshipSummarySheet extends ConsumerStatefulWidget {
@@ -25,6 +26,7 @@ class _RelationshipSummarySheetState
   RelationshipProfile? profile;
   List<SafeTopic>? safeTopics;
   bool isLoading = true;
+  bool isGenerating = false;
 
   @override
   void initState() {
@@ -56,6 +58,49 @@ class _RelationshipSummarySheetState
     }
   }
 
+  /// Generate relationship summary using AI
+  Future<void> _generateSummary({bool forceRegenerate = false}) async {
+    setState(() => isGenerating = true);
+
+    try {
+      // Use provider to generate summary
+      final newProfile = await ref.read(
+        generateRelationshipSummaryProvider(widget.conversationId).future,
+      );
+
+      if (mounted) {
+        setState(() {
+          profile = newProfile;
+          isGenerating = false;
+        });
+
+        // Reload safe topics
+        final topics = await relationshipService.getSafeTopics(widget.conversationId);
+        setState(() {
+          safeTopics = topics;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✨ Relationship summary generated!'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => isGenerating = false);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to generate summary: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -67,7 +112,57 @@ class _RelationshipSummarySheetState
       child: isLoading
           ? const Center(child: CircularProgressIndicator())
           : profile == null
-              ? const Center(child: Text('No profile available'))
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.person_outline,
+                        size: 64,
+                        color: Colors.grey[400],
+                      ),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'No relationship profile yet',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Generate an AI profile to understand\nthis relationship better',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      ElevatedButton.icon(
+                        onPressed: isGenerating ? null : _generateSummary,
+                        icon: isGenerating
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.auto_awesome),
+                        label: Text(
+                          isGenerating ? 'Generating...' : 'Generate Profile',
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.purple,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 24,
+                            vertical: 12,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
               : SingleChildScrollView(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -102,6 +197,18 @@ class _RelationshipSummarySheetState
                                   ),
                               ],
                             ),
+                          ),
+                          // ✅ PHASE 3: Refresh button
+                          IconButton(
+                            icon: isGenerating
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(strokeWidth: 2),
+                                  )
+                                : const Icon(Icons.refresh),
+                            onPressed: isGenerating ? null : () => _generateSummary(forceRegenerate: true),
+                            tooltip: 'Refresh profile',
                           ),
                           IconButton(
                             icon: const Icon(Icons.close),

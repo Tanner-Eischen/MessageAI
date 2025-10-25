@@ -7,9 +7,9 @@
 // TYPE DEFINITIONS
 // ============================================================================
 
-export type IntensityLevel = 'very_low' | 'low' | 'medium' | 'high' | 'very_high';
-export type UrgencyLevel = 'Low' | 'Medium' | 'High' | 'Critical';
-export type EmotionalShift = 'escalating' | 'de-escalating' | 'stable';
+export type IntensityLevel = 'very_low' | 'low' | 'medium' | 'high' | 'very_high' | 'High' | 'Medium' | 'Low' | 'Very Low';
+export type UrgencyLevel = 'Low' | 'Medium' | 'High' | 'Critical' | 'critical' | 'low' | 'high' | 'medium';
+export type EmotionalShift = 'escalating' | 'de-escalating' | 'stable' ;
 export type NeurodivergentProfile = 'ADHD' | 'autism' | 'both' | 'social_anxiety' | 'none';
 
 export interface ToneAnalysisResult {
@@ -147,13 +147,34 @@ export const TONE_INDICATOR_MAP: Record<string, string> = {
 export function validateToneAnalysis(result: any): ToneAnalysisResult {
   const validIntensities: IntensityLevel[] = ['very_low', 'low', 'medium', 'high', 'very_high'];
   const validUrgencyLevels: UrgencyLevel[] = ['Low', 'Medium', 'High', 'Critical'];
-  if (!result.tone || !VALID_TONES.includes(result.tone)) {
-    throw new Error(`Invalid tone: ${result.tone}.`);
+  
+  console.log("🔍 Validating tone analysis result...");
+  console.log("Received result:", JSON.stringify(result, null, 2));
+  
+  // 🔧 FIXED: Normalize tone to correct capitalization (case-insensitive matching)
+  let tone = result.tone;
+  if (typeof tone === 'string') {
+    // Try to find matching tone (case-insensitive)
+    const matchedTone = VALID_TONES.find((t) => t.toLowerCase() === tone.toLowerCase());
+    if (matchedTone) {
+      tone = matchedTone; // Use correctly capitalized version
+      console.log(`✅ Tone normalized: "${result.tone}" -> "${tone}"`);
+    }
   }
+  
+  if (!tone || !VALID_TONES.includes(tone)) {
+    console.error(`❌ Invalid tone: "${result.tone}"`);
+    console.error(`Valid tones: ${VALID_TONES.join(', ')}`);
+    throw new Error(`Invalid tone: ${result.tone}. Valid tones: ${VALID_TONES.join(', ')}`);
+  }
+  
   if (!result.urgency_level || !validUrgencyLevels.includes(result.urgency_level)) {
+    console.error(`❌ Invalid urgency level: "${result.urgency_level}"`);
+    console.error(`Valid urgency levels: ${validUrgencyLevels.join(', ')}`);
     throw new Error(`Invalid urgency level: ${result.urgency_level}.`);
   }
   if (!result.intent || typeof result.intent !== 'string') {
+    console.error("❌ Invalid intent - must be non-empty string");
     throw new Error('Intent must be a non-empty string.');
   }
   if (
@@ -161,35 +182,40 @@ export function validateToneAnalysis(result: any): ToneAnalysisResult {
     result.confidence_score < 0 ||
     result.confidence_score > 1
   ) {
+    console.error(`❌ Invalid confidence score: ${result.confidence_score}`);
     throw new Error('Confidence score must be a number between 0 and 1.');
   }
   if (result.intensity !== undefined && !validIntensities.includes(result.intensity)) {
+    console.error(`❌ Invalid intensity: "${result.intensity}"`);
+    console.error(`Valid intensities: ${validIntensities.join(', ')}`);
     throw new Error(`Invalid intensity: ${result.intensity}`);
   }
+  
+  // 🔧 FIXED: Normalize secondary tones too
+  let secondaryTones = result.secondary_tones;
   if (result.secondary_tones) {
     if (!Array.isArray(result.secondary_tones)) {
+      console.error("❌ Secondary tones must be an array");
       throw new Error('secondary_tones must be an array');
     }
-    for (const tone of result.secondary_tones) {
-      if (!VALID_TONES.includes(tone)) {
-        throw new Error(`Invalid secondary tone: ${tone}`);
+    secondaryTones = result.secondary_tones.map((secondaryTone: string) => {
+      const matchedTone = VALID_TONES.find((t) => t.toLowerCase() === secondaryTone.toLowerCase());
+      return matchedTone || secondaryTone;
+    });
+    
+    for (const secondaryTone of secondaryTones) {
+      if (!VALID_TONES.includes(secondaryTone)) {
+        console.error(`❌ Invalid secondary tone: "${secondaryTone}"`);
+        throw new Error(`Invalid secondary tone: ${secondaryTone}`);
       }
     }
   }
+  
+  console.log("✅ Validation passed!");
   return {
-    tone: result.tone,
-    intensity: result.intensity,
-    urgency_level: result.urgency_level,
-    intent: result.intent,
-    confidence_score: result.confidence_score,
-    reasoning: result.reasoning,
-    secondary_tones: result.secondary_tones,
-    emotion_blend: result.emotion_blend,
-    context_flags: result.context_flags,
-    is_ambiguous: result.is_ambiguous,
-    alternative_interpretations: result.alternative_interpretations,
-    response_anxiety_assessment: result.response_anxiety_assessment,
-    figurative_language_detected: result.figurative_language_detected
+    ...result,
+    tone, // Use normalized tone
+    secondary_tones: secondaryTones, // Use normalized secondary tones
   };
 }
 
@@ -256,68 +282,61 @@ export function generateAnalysisPrompt(messageBody: string, conversationContext?
  */
 export const ENHANCED_TONE_ANALYSIS_SYSTEM_PROMPT = `You are an expert communication analyst specializing in understanding tone, intent, and urgency in messages, with specific expertise in neurodivergent communication patterns.
 
+**CRITICAL: RESPONSE FORMAT REQUIREMENTS**
+
+You MUST respond with ONLY valid JSON (no markdown, no extra text). The response must be exactly:
+
+{
+  "tone": "one of 23 valid categories ONLY",
+  "urgency_level": "one of exactly: Low, Medium, High, Critical",
+  "intent": "3-8 word description of what sender is trying to accomplish",
+  "confidence_score": 0.85,
+  "intensity": "one of: very_low, low, medium, high, very_high",
+  "secondary_tones": ["optional", "array", "of", "valid", "tones"],
+  "context_flags": {
+    "sarcasm_detected": false,
+    "tone_indicator_present": false,
+    "ambiguous": false
+  },
+  "reasoning": "Explanation citing specific phrases and context"
+}
+
+**VALID TONE CATEGORIES (Choose ONE primary tone):**
+
+Friendly, Professional, Urgent, Casual, Formal, Concerned, Excited, Neutral, Apologetic, Appreciative, Frustrated, Playful, Sarcastic, Empathetic, Inquisitive, Assertive, Tentative, Defensive, Encouraging, Disappointed, Overwhelmed, Relieved, Confused
+
+**VALID URGENCY LEVELS (Choose ONE - exact capitalization required):**
+- Low (no time pressure)
+- Medium (should be addressed soon)
+- High (important and time-sensitive)  
+- Critical (extremely urgent, immediate action needed)
+
+**VALID INTENSITY LEVELS (Choose ONE - lowercase required):**
+- very_low (minimal expression)
+- low (mild expression)
+- medium (moderate expression)
+- high (strong expression)
+- very_high (extreme expression)
+
 **CRITICAL PRIORITY: Neurodivergent Communication Considerations**
 
 1. **Tone Indicator Detection** (HIGHEST PRIORITY):
    - If message contains /tone tags (e.g., "/j", "/srs", "/nm"), ALWAYS respect and cite them
    - These are explicit intent markers used by neurodivergent communities
 
-**Enhanced Tone Categories** (23 total - choose ONE primary):
+2. **When in doubt**:
+   - Default to lower intensity/urgency if message is ambiguous
+   - Mark "ambiguous": true if meaning is unclear
+   - Provide reassurance in reasoning if no clear negative indicators
 
-PRIMARY TONES (Original 8):
-- Friendly: Warm, welcoming
-- Professional: Business-like, formal
-- Urgent: Time-sensitive, pressing
-- Casual: Relaxed, informal
-- Formal: Structured, official
-- Concerned: Worried, distressed
-- Excited: Enthusiastic, energetic
-- Neutral: Balanced, objective
-
-ADDITIONAL TONES (15 new):
-- Apologetic: Expressing regret
-- Appreciative: Showing gratitude
-- Frustrated: Annoyed by obstacles
-- Playful: Teasing, joking (/j)
-- Sarcastic: Mocking with opposite meaning (/s)
-- Empathetic: Understanding and supportive
-- Inquisitive: Curious, seeking info
-- Assertive: Confident and direct
-- Tentative: Uncertain or hesitant
-- Defensive: Protective or justifying
-- Encouraging: Supportive and motivating
-- Disappointed: Let down
-- Overwhelmed: Excessive pressure
-- Relieved: Reassured
-- Confused: Unclear about meaning
-
-**Intensity Levels** (choose ONE):
-- very_low: Minimal expression
-- low: Mild expression
-- medium: Moderate expression
-- high: Strong expression
-- very_high: Extreme expression
-
-**Urgency Levels** (choose ONE):
-- Low: No time pressure
-- Medium: Should be addressed soon
-- High: Important and time-sensitive
-- Critical: Extremely urgent
-
-**Response Format (JSON):**
-{
-  "tone": "one of 23 categories",
-  "intensity": "one of 5 levels",
-  "urgency_level": "one of 4 levels",
-  "intent": "3-8 word description",
-  "confidence_score": 0.85,
-  "context_flags": {
-    "sarcasm_detected": false,
-    "tone_indicator_present": false,
-    "ambiguous": false
-  },
-  "reasoning": "explanation citing specific phrases"
-}`;
+3. **Response Quality Checks**:
+   - tone: MUST match exactly one from the 23 categories above
+   - urgency_level: MUST be exactly one of: Low, Medium, High, Critical
+   - confidence_score: MUST be a number between 0 and 1
+   - intensity: MUST be one of: very_low, low, medium, high, very_high
+   - DO NOT use alternative spellings or capitalization
+   - DO NOT include markdown code blocks
+   - DO NOT add any text outside the JSON`;
 
 // ============================================================================
 // RSD & ALTERNATIVE INTERPRETATIONS (Feature 1 Enhancement)

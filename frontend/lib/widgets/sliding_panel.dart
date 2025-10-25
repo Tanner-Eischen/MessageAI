@@ -4,8 +4,11 @@ import 'package:messageai/core/theme/app_theme.dart';
 /// A sliding panel widget that can be dragged up and down
 /// Used for the message screen to slide over AI insights
 class SlidingPanel extends StatefulWidget {
-  /// The content to display in the sliding panel
-  final Widget child;
+  /// Builder function to create the child with scroll controller
+  final Widget Function(ScrollController)? builder;
+  
+  /// The content to display in the sliding panel (deprecated, use builder instead)
+  final Widget? child;
   
   /// Called when the panel position changes (0.0 = collapsed, 1.0 = fully expanded)
   final ValueChanged<double>? onSlide;
@@ -33,7 +36,8 @@ class SlidingPanel extends StatefulWidget {
 
   const SlidingPanel({
     Key? key,
-    required this.child,
+    this.builder,
+    this.child,
     this.onSlide,
     this.minHeight = 0.2,
     this.maxHeight = 0.95,
@@ -42,7 +46,8 @@ class SlidingPanel extends StatefulWidget {
     this.backgroundColor,
     this.borderRadius = 16.0,
     this.showDragHandle = true,
-  }) : super(key: key);
+  }) : assert(builder != null || child != null, 'Either builder or child must be provided'),
+       super(key: key);
 
   @override
   State<SlidingPanel> createState() => _SlidingPanelState();
@@ -81,55 +86,74 @@ class _SlidingPanelState extends State<SlidingPanel> {
     final bgColor = widget.backgroundColor ?? 
                     (isDark ? AppTheme.black : AppTheme.white);
     
-    return DraggableScrollableSheet(
-      controller: _controller,
-      initialChildSize: widget.initialHeight,
-      minChildSize: widget.minHeight,
-      maxChildSize: widget.maxHeight,
-      snap: true,
-      snapSizes: widget.snapSizes,
-      builder: (BuildContext context, ScrollController scrollController) {
-        return Container(
-          decoration: BoxDecoration(
-            color: bgColor,
-            borderRadius: BorderRadius.only(
-              topLeft: Radius.circular(widget.borderRadius),
-              topRight: Radius.circular(widget.borderRadius),
+    return NotificationListener<DraggableScrollableNotification>(
+      onNotification: (notification) {
+        // Update position for smoother tracking
+        if (widget.onSlide != null) {
+          final normalizedPosition = (notification.extent - widget.minHeight) / 
+                                     (widget.maxHeight - widget.minHeight);
+          widget.onSlide?.call(normalizedPosition.clamp(0.0, 1.0));
+        }
+        return false;
+      },
+      child: DraggableScrollableSheet(
+        controller: _controller,
+        initialChildSize: widget.initialHeight,
+        minChildSize: widget.minHeight,
+        maxChildSize: widget.maxHeight,
+        snap: true,
+        snapSizes: widget.snapSizes,
+        expand: false,
+        builder: (BuildContext context, ScrollController scrollController) {
+          return Container(
+            decoration: BoxDecoration(
+              color: bgColor,
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(widget.borderRadius),
+                topRight: Radius.circular(widget.borderRadius),
+              ),
+              boxShadow: isDark ? AppTheme.shadow2Dark : AppTheme.shadow3Light,
             ),
-            boxShadow: isDark ? AppTheme.shadow2Dark : AppTheme.shadow3Light,
-          ),
-          child: Column(
-            children: [
-              // Drag handle area
-              if (widget.showDragHandle)
-                GestureDetector(
-                  onTap: () => _snapToNextPosition(),
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(
-                      vertical: AppTheme.spacingS,
-                    ),
-                    child: Center(
-                      child: Container(
-                        width: 40,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: isDark ? AppTheme.gray600 : AppTheme.gray400,
-                          borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+            child: Column(
+              children: [
+                // Drag handle - simple tap to cycle through positions
+                if (widget.showDragHandle)
+                  InkWell(
+                    onTap: () => _snapToNextPosition(),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        vertical: AppTheme.spacingM,
+                      ),
+                      child: Center(
+                        child: Container(
+                          width: 40,
+                          height: 5,
+                          decoration: BoxDecoration(
+                            color: isDark ? AppTheme.gray600 : AppTheme.gray400,
+                            borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+                          ),
                         ),
                       ),
                     ),
                   ),
+                
+                // Panel content with scroll controller for dragging
+                Expanded(
+                  child: widget.builder != null 
+                    ? widget.builder!(scrollController) 
+                    : (widget.child != null 
+                        ? SingleChildScrollView(
+                            controller: scrollController,
+                            child: widget.child!,
+                          )
+                        : const SizedBox.shrink()),
                 ),
-              
-              // Panel content
-              Expanded(
-                child: widget.child,
-              ),
-            ],
-          ),
-        );
-      },
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
   

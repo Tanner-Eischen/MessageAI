@@ -30,6 +30,13 @@ class DraftFeedbackPanel extends StatefulWidget {
 
 class _DraftFeedbackPanelState extends State<DraftFeedbackPanel> {
   bool _isExpanded = true;
+  bool _strengthsExpanded = true; // Always show strengths
+  bool _warningsExpanded = true; // Always show warnings
+  bool _suggestionsExpanded = false;
+  bool _situationExpanded = false;
+  bool _templatesExpanded = false;
+  bool _formattingExpanded = false;
+  bool _reasoningExpanded = false;
 
   @override
   Widget build(BuildContext context) {
@@ -141,7 +148,7 @@ class _DraftFeedbackPanelState extends State<DraftFeedbackPanel> {
     final confidenceColor = analysis.getConfidenceColor();
 
     return Container(
-      padding: const EdgeInsets.all(AppTheme.spacingM),
+      constraints: const BoxConstraints(maxHeight: 600),
       decoration: BoxDecoration(
         color: confidenceColor.withOpacity(0.1),
         borderRadius: BorderRadius.circular(AppTheme.radiusM),
@@ -151,19 +158,64 @@ class _DraftFeedbackPanelState extends State<DraftFeedbackPanel> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Header with confidence score and collapse button
-          Row(
-            children: [
-              Icon(
-                analysis.getAppropriatenessIcon(),
-                color: confidenceColor,
-                size: 24,
+          // Header with title and controls
+          Container(
+            padding: const EdgeInsets.all(AppTheme.spacingM),
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(
+                  color: confidenceColor.withOpacity(0.3),
+                  width: 1,
+                ),
               ),
-              const SizedBox(width: AppTheme.spacingS),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
+                    Icon(
+                      Icons.analytics_outlined,
+                      color: confidenceColor,
+                      size: 20,
+                    ),
+                    const SizedBox(width: AppTheme.spacingXS),
+                    Text(
+                      'Draft Analysis',
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: AppTheme.fontWeightBold,
+                        color: isDark ? AppTheme.gray200 : AppTheme.gray800,
+                      ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.expand_less, size: 20),
+                      onPressed: () => setState(() => _isExpanded = false),
+                      tooltip: 'Minimize',
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                    if (widget.onClose != null) ...[
+                      const SizedBox(width: AppTheme.spacingXS),
+                      IconButton(
+                        icon: const Icon(Icons.close, size: 20),
+                        onPressed: widget.onClose,
+                        tooltip: 'Close',
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: AppTheme.spacingS),
+                Row(
+                  children: [
+                    Icon(
+                      analysis.getAppropriatenessIcon(),
+                      color: confidenceColor,
+                      size: 20,
+                    ),
+                    const SizedBox(width: AppTheme.spacingXS),
                     Text(
                       '${analysis.confidenceScore}% Confidence',
                       style: theme.textTheme.titleMedium?.copyWith(
@@ -171,388 +223,555 @@ class _DraftFeedbackPanelState extends State<DraftFeedbackPanel> {
                         fontWeight: AppTheme.fontWeightBold,
                       ),
                     ),
-                    Text(
-                      '${analysis.tone} • ${analysis.appropriateness.displayName}',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: isDark ? AppTheme.gray500 : AppTheme.gray600,
+                    const SizedBox(width: AppTheme.spacingS),
+                    Expanded(
+                      child: Text(
+                        '${analysis.tone} • ${analysis.appropriateness.displayName}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: isDark ? AppTheme.gray500 : AppTheme.gray600,
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
                 ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.expand_less, size: 20),
-                onPressed: () => setState(() => _isExpanded = false),
-                tooltip: 'Minimize',
-              ),
-              if (widget.onClose != null)
-                IconButton(
-                  icon: const Icon(Icons.close, size: 20),
-                  onPressed: widget.onClose,
-                  tooltip: 'Close',
-                ),
-            ],
+              ],
+            ),
           ),
 
-          const SizedBox(height: AppTheme.spacingM),
-
-          // Strengths (always show if present)
-          if (analysis.strengths.isNotEmpty) ...[
-            _buildSection(
-              context,
-              '✅ Strengths',
-              analysis.strengths,
-              Colors.green,
-              showApplyButton: false,
-            ),
-            const SizedBox(height: AppTheme.spacingS),
-          ],
-
-          // Warnings (show if present)
-          if (analysis.warnings.isNotEmpty) ...[
-            _buildSection(
-              context,
-              '⚠️ Watch Out',
-              analysis.warnings,
-              Colors.orange,
-              showApplyButton: false,
-            ),
-            const SizedBox(height: AppTheme.spacingS),
-          ],
-
-          // Suggestions with Apply buttons
-          if (analysis.suggestions.isNotEmpty) ...[
-            _buildSection(
-              context,
-              '💡 Suggestions',
-              analysis.suggestions,
-              Colors.blue,
-              showApplyButton: widget.onApplySuggestion != null,
-            ),
-            const SizedBox(height: AppTheme.spacingS),
-          ],
-
-          // ✅ NEW: Situation Detection
-          if (analysis.situationDetection != null) ...[
-            _buildSituationSection(context, analysis),
-            const SizedBox(height: AppTheme.spacingS),
-          ],
-
-          // ✅ NEW: Suggested Templates
-          if (analysis.suggestedTemplates != null &&
-              analysis.suggestedTemplates!.isNotEmpty) ...[
-            _buildTemplatesSection(context, analysis),
-            const SizedBox(height: AppTheme.spacingS),
-          ],
-
-          // ✅ NEW: Message Too Long Warning
-          if (widget.draftMessage != null && widget.draftMessage!.length > 500) ...[
-            _buildFormattingSection(context),
-            const SizedBox(height: AppTheme.spacingS),
-          ],
-
-          // Reasoning (collapsible)
-          if (analysis.reasoning != null && analysis.reasoning!.isNotEmpty) ...[
-            Theme(
-              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-              child: ExpansionTile(
-                tilePadding: EdgeInsets.zero,
-                title: Text(
-                  'Why this score?',
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    fontWeight: AppTheme.fontWeightMedium,
-                    color: isDark ? AppTheme.gray400 : AppTheme.gray700,
-                  ),
-                ),
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: AppTheme.spacingS),
-                    child: Text(
-                      analysis.reasoning!,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: isDark ? AppTheme.gray500 : AppTheme.gray600,
+          // Scrollable content with invisible scrollbar
+          Flexible(
+            child: Scrollbar(
+              thumbVisibility: false,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(AppTheme.spacingM),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Strengths (collapsible)
+                    if (analysis.strengths.isNotEmpty) ...[
+                      _buildCollapsibleSection(
+                        context,
+                        '✅ Strengths',
+                        analysis.strengths,
+                        Colors.green,
+                        _strengthsExpanded,
+                        (expanded) => setState(() => _strengthsExpanded = expanded),
+                        showApplyButton: false,
                       ),
-                    ),
-                  ),
-                ],
+                      const SizedBox(height: AppTheme.spacingS),
+                    ],
+
+                    // Warnings (collapsible)
+                    if (analysis.warnings.isNotEmpty) ...[
+                      _buildCollapsibleSection(
+                        context,
+                        '⚠️ Watch Out',
+                        analysis.warnings,
+                        Colors.orange,
+                        _warningsExpanded,
+                        (expanded) => setState(() => _warningsExpanded = expanded),
+                        showApplyButton: false,
+                      ),
+                      const SizedBox(height: AppTheme.spacingS),
+                    ],
+
+                    // Suggestions (collapsible)
+                    if (analysis.suggestions.isNotEmpty) ...[
+                      _buildCollapsibleSection(
+                        context,
+                        '💡 Suggestions',
+                        analysis.suggestions,
+                        Colors.blue,
+                        _suggestionsExpanded,
+                        (expanded) => setState(() => _suggestionsExpanded = expanded),
+                        showApplyButton: widget.onApplySuggestion != null,
+                      ),
+                      const SizedBox(height: AppTheme.spacingS),
+                    ],
+
+                    // Situation Detection (collapsible)
+                    if (analysis.situationDetection != null) ...[
+                      _buildCollapsibleSituationSection(context, analysis),
+                      const SizedBox(height: AppTheme.spacingS),
+                    ],
+
+                    // Suggested Templates (collapsible)
+                    if (analysis.suggestedTemplates != null &&
+                        analysis.suggestedTemplates!.isNotEmpty) ...[
+                      _buildCollapsibleTemplatesSection(context, analysis),
+                      const SizedBox(height: AppTheme.spacingS),
+                    ],
+
+                    // Message Formatting (collapsible)
+                    if (widget.draftMessage != null && widget.draftMessage!.length > 500) ...[
+                      _buildCollapsibleFormattingSection(context),
+                      const SizedBox(height: AppTheme.spacingS),
+                    ],
+
+                    // Reasoning (collapsible)
+                    if (analysis.reasoning != null && analysis.reasoning!.isNotEmpty) ...[
+                      _buildCollapsibleReasoningSection(context, analysis),
+                    ],
+                  ],
+                ),
               ),
             ),
-          ],
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildSection(
+  // Collapsible section for list items
+  Widget _buildCollapsibleSection(
     BuildContext context,
     String title,
     List<String> items,
-    Color color, {
+    Color color,
+    bool isExpanded,
+    Function(bool) onExpansionChanged, {
     required bool showApplyButton,
   }) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: theme.textTheme.labelMedium?.copyWith(
-            color: color,
-            fontWeight: AppTheme.fontWeightBold,
+    return Container(
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(AppTheme.radiusS),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(
+            horizontal: AppTheme.spacingS,
+            vertical: AppTheme.spacingXXS,
           ),
-        ),
-        const SizedBox(height: AppTheme.spacingXS),
-        ...items.map((item) => Padding(
-              padding: const EdgeInsets.only(top: AppTheme.spacingXXS),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Text(
-                      '• ',
-                      style: TextStyle(
-                        color: color,
-                        fontSize: AppTheme.fontSizeS,
-                      ),
-                    ),
+          childrenPadding: const EdgeInsets.only(
+            left: AppTheme.spacingS,
+            right: AppTheme.spacingS,
+            bottom: AppTheme.spacingS,
+          ),
+          initiallyExpanded: isExpanded,
+          onExpansionChanged: onExpansionChanged,
+          leading: Icon(Icons.check_circle_outline, size: 16, color: color),
+          title: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: isDark ? AppTheme.gray300 : AppTheme.gray800,
+                    fontWeight: AppTheme.fontWeightBold,
                   ),
-                  Expanded(
-                    child: Text(
-                      item,
-                      style: theme.textTheme.bodySmall,
-                    ),
-                  ),
-                  if (showApplyButton && widget.onApplySuggestion != null) ...[
-                    const SizedBox(width: AppTheme.spacingXS),
-                    TextButton(
-                      onPressed: () => widget.onApplySuggestion!(item),
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: AppTheme.spacingS,
-                          vertical: AppTheme.spacingXXS,
-                        ),
-                        minimumSize: Size.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
-                      child: Text(
-                        'Apply',
-                        style: TextStyle(
-                          fontSize: AppTheme.fontSizeXS,
-                          color: color,
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
+                ),
               ),
-            )),
-      ],
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppTheme.spacingXS,
+                  vertical: 2,
+                ),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusXS),
+                ),
+                child: Text(
+                  '${items.length}',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: color,
+                    fontWeight: AppTheme.fontWeightBold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          children: items.map((item) => Padding(
+            padding: const EdgeInsets.only(top: AppTheme.spacingXXS),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Icon(
+                    Icons.circle,
+                    size: 6,
+                    color: color,
+                  ),
+                ),
+                const SizedBox(width: AppTheme.spacingXS),
+                Expanded(
+                  child: Text(
+                    item,
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
+                if (showApplyButton && widget.onApplySuggestion != null) ...[
+                  const SizedBox(width: AppTheme.spacingXS),
+                  TextButton(
+                    onPressed: () => widget.onApplySuggestion!(item),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppTheme.spacingS,
+                        vertical: AppTheme.spacingXXS,
+                      ),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: Text(
+                      'Apply',
+                      style: TextStyle(
+                        fontSize: AppTheme.fontSizeXS,
+                        color: color,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          )).toList(),
+        ),
+      ),
     );
   }
 
-  // ✅ NEW: Build situation detection section
-  Widget _buildSituationSection(BuildContext context, DraftAnalysis analysis) {
+  // Collapsible situation detection section
+  Widget _buildCollapsibleSituationSection(BuildContext context, DraftAnalysis analysis) {
     final detection = analysis.situationDetection!;
     final color = detection.situationType.getColor();
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return Container(
-      padding: const EdgeInsets.all(AppTheme.spacingS),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withOpacity(0.05),
         borderRadius: BorderRadius.circular(AppTheme.radiusS),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withOpacity(0.2)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(
+            horizontal: AppTheme.spacingS,
+            vertical: AppTheme.spacingXXS,
+          ),
+          childrenPadding: const EdgeInsets.only(
+            left: AppTheme.spacingS,
+            right: AppTheme.spacingS,
+            bottom: AppTheme.spacingS,
+          ),
+          initiallyExpanded: _situationExpanded,
+          onExpansionChanged: (expanded) => setState(() => _situationExpanded = expanded),
+          leading: Icon(detection.situationType.icon, size: 16, color: color),
+          title: Text(
+            '${detection.situationType.displayName} Detected',
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: isDark ? AppTheme.gray300 : AppTheme.gray800,
+              fontWeight: AppTheme.fontWeightBold,
+            ),
+          ),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(detection.situationType.icon, size: 18, color: color),
-              const SizedBox(width: AppTheme.spacingXS),
-              Text(
-                'Detected: ${detection.situationType.displayName}',
-                style: theme.textTheme.labelMedium?.copyWith(
-                  fontWeight: AppTheme.fontWeightBold,
-                  color: color,
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppTheme.spacingXS,
+                  vertical: 2,
+                ),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusXS),
+                ),
+                child: Text(
+                  '${(detection.confidence * 100).toInt()}%',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: color,
+                    fontWeight: AppTheme.fontWeightBold,
+                  ),
                 ),
               ),
-              const Spacer(),
-              Text(
-                '${(detection.confidence * 100).toInt()}%',
-                style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
+              Icon(
+                _situationExpanded ? Icons.expand_less : Icons.expand_more,
+                color: isDark ? AppTheme.gray500 : AppTheme.gray600,
               ),
             ],
           ),
-          const SizedBox(height: AppTheme.spacingXXS),
-          Text(
-            detection.reasoning,
-            style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
-          ),
-        ],
+          children: [
+            Text(
+              detection.reasoning,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: isDark ? AppTheme.gray500 : AppTheme.gray600,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  // ✅ NEW: Build templates section
-  Widget _buildTemplatesSection(BuildContext context, DraftAnalysis analysis) {
+  // Collapsible templates section
+  Widget _buildCollapsibleTemplatesSection(BuildContext context, DraftAnalysis analysis) {
     final theme = Theme.of(context);
-    final templates = analysis.suggestedTemplates!.take(3).toList();
+    final isDark = theme.brightness == Brightness.dark;
+    final color = Colors.blue;
+    final templates = analysis.suggestedTemplates!;
 
     return Container(
-      padding: const EdgeInsets.all(AppTheme.spacingS),
       decoration: BoxDecoration(
-        color: Colors.blue.withOpacity(0.05),
+        color: color.withOpacity(0.05),
         borderRadius: BorderRadius.circular(AppTheme.radiusS),
-        border: Border.all(color: Colors.blue.withOpacity(0.3)),
+        border: Border.all(color: color.withOpacity(0.2)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(
+            horizontal: AppTheme.spacingS,
+            vertical: AppTheme.spacingXXS,
+          ),
+          childrenPadding: const EdgeInsets.only(
+            left: AppTheme.spacingS,
+            right: AppTheme.spacingS,
+            bottom: AppTheme.spacingS,
+          ),
+          initiallyExpanded: _templatesExpanded,
+          onExpansionChanged: (expanded) => setState(() => _templatesExpanded = expanded),
+          leading: const Icon(Icons.lightbulb_outline, size: 16, color: Colors.blue),
+          title: Row(
             children: [
-              const Icon(Icons.lightbulb, size: 18, color: Colors.blue),
-              const SizedBox(width: AppTheme.spacingXS),
-              Text(
-                'Suggested Templates',
-                style: theme.textTheme.labelMedium?.copyWith(
-                  fontWeight: AppTheme.fontWeightBold,
-                  color: Colors.blue,
+              Expanded(
+                child: Text(
+                  'Response Templates',
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: isDark ? AppTheme.gray300 : AppTheme.gray800,
+                    fontWeight: AppTheme.fontWeightBold,
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppTheme.spacingXS,
+                  vertical: 2,
+                ),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusXS),
+                ),
+                child: Text(
+                  '${templates.length}',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: color,
+                    fontWeight: AppTheme.fontWeightBold,
+                  ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: AppTheme.spacingXS),
-          ...templates.map((template) => Padding(
-            padding: const EdgeInsets.only(top: AppTheme.spacingXXS),
-            child: InkWell(
-              onTap: () {
-                showTemplatePicker(
-                  context,
-                  analysis.situationDetection?.situationType,
-                  (selectedText) {
-                    if (widget.onTemplateSelected != null) {
-                      widget.onTemplateSelected!(selectedText);
-                    }
-                  },
-                );
-              },
-              child: Row(
-                children: [
-                  const Icon(Icons.arrow_forward, size: 14, color: Colors.blue),
-                  const SizedBox(width: AppTheme.spacingXXS),
-                  Expanded(
-                    child: Text(
-                      template.name,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: Colors.blue,
-                        decoration: TextDecoration.underline,
+          children: [
+            ...templates.take(3).map((template) => Padding(
+              padding: const EdgeInsets.only(top: AppTheme.spacingXXS),
+              child: InkWell(
+                onTap: () {
+                  if (widget.onTemplateSelected != null) {
+                    widget.onTemplateSelected!(template.template);
+                  }
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(AppTheme.spacingXS),
+                  decoration: BoxDecoration(
+                    color: isDark ? AppTheme.darkGray300 : AppTheme.gray100,
+                    borderRadius: BorderRadius.circular(AppTheme.radiusXS),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.check_circle_outline,
+                        size: 14,
+                        color: color,
+                      ),
+                      const SizedBox(width: AppTheme.spacingXS),
+                      Expanded(
+                        child: Text(
+                          template.name,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontWeight: AppTheme.fontWeightMedium,
+                          ),
+                        ),
+                      ),
+                      Icon(
+                        Icons.arrow_forward,
+                        size: 14,
+                        color: color,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            )),
+            const SizedBox(height: AppTheme.spacingS),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: () {
+                  showTemplatePicker(
+                    context,
+                    analysis.situationDetection?.situationType,
+                    (selectedText) {
+                      if (widget.onTemplateSelected != null) {
+                        widget.onTemplateSelected!(selectedText);
+                      }
+                    },
+                  );
+                },
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: AppTheme.spacingXS,
+                  ),
+                  side: BorderSide(color: color),
+                ),
+                child: const Text(
+                  'Browse All Templates',
+                  style: TextStyle(fontSize: AppTheme.fontSizeXS),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Collapsible formatting section
+  Widget _buildCollapsibleFormattingSection(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final color = Colors.orange;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(AppTheme.radiusS),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(
+            horizontal: AppTheme.spacingS,
+            vertical: AppTheme.spacingXXS,
+          ),
+          childrenPadding: const EdgeInsets.only(
+            left: AppTheme.spacingS,
+            right: AppTheme.spacingS,
+            bottom: AppTheme.spacingS,
+          ),
+          initiallyExpanded: _formattingExpanded,
+          onExpansionChanged: (expanded) => setState(() => _formattingExpanded = expanded),
+          leading: const Icon(Icons.format_list_bulleted, size: 16, color: Colors.orange),
+          title: Text(
+            'Message Formatting',
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: isDark ? AppTheme.gray300 : AppTheme.gray800,
+              fontWeight: AppTheme.fontWeightBold,
+            ),
+          ),
+          children: [
+            Text(
+              'This message is quite long (${widget.draftMessage!.length} characters). Consider breaking it into sections or using bullet points to make it easier to read.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: isDark ? AppTheme.gray500 : AppTheme.gray600,
+              ),
+            ),
+            const SizedBox(height: AppTheme.spacingS),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  showDialog(
+                    context: context,
+                    builder: (context) => Dialog(
+                      child: MessageFormatterPanel(
+                        originalMessage: widget.draftMessage!,
+                        onFormatted: (formatted) {
+                          if (widget.onTemplateSelected != null) {
+                            widget.onTemplateSelected!(formatted);
+                          }
+                          Navigator.pop(context);
+                        },
                       ),
                     ),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: color,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    vertical: AppTheme.spacingS,
                   ),
-                ],
-              ),
-            ),
-          )),
-          const SizedBox(height: AppTheme.spacingS),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton(
-              onPressed: () {
-                showTemplatePicker(
-                  context,
-                  analysis.situationDetection?.situationType,
-                  (selectedText) {
-                    if (widget.onTemplateSelected != null) {
-                      widget.onTemplateSelected!(selectedText);
-                    }
-                  },
-                );
-              },
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(
-                  vertical: AppTheme.spacingXS,
                 ),
-                side: const BorderSide(color: Colors.blue),
-              ),
-              child: const Text(
-                'Browse All Templates',
-                style: TextStyle(fontSize: AppTheme.fontSizeXS),
+                icon: const Icon(Icons.auto_fix_high, size: 16),
+                label: const Text(
+                  'Auto-Format Message',
+                  style: TextStyle(fontSize: AppTheme.fontSizeS),
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  // ✅ NEW: Build formatting warning section
-  Widget _buildFormattingSection(BuildContext context) {
+  // NEW: Collapsible reasoning section
+  Widget _buildCollapsibleReasoningSection(BuildContext context, DraftAnalysis analysis) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
 
     return Container(
-      padding: const EdgeInsets.all(AppTheme.spacingS),
       decoration: BoxDecoration(
-        color: Colors.orange.withOpacity(0.1),
+        color: (isDark ? AppTheme.darkGray300 : AppTheme.gray100),
         borderRadius: BorderRadius.circular(AppTheme.radiusS),
-        border: Border.all(color: Colors.orange.withOpacity(0.3)),
+        border: Border.all(
+          color: isDark ? AppTheme.darkGray400 : AppTheme.gray300,
+        ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.warning_amber, size: 18, color: Colors.orange),
-              const SizedBox(width: AppTheme.spacingXS),
-              Text(
-                'Long Message Detected',
-                style: theme.textTheme.labelMedium?.copyWith(
-                  fontWeight: AppTheme.fontWeightBold,
-                  color: Colors.orange,
-                ),
-              ),
-            ],
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(
+            horizontal: AppTheme.spacingS,
+            vertical: AppTheme.spacingXXS,
           ),
-          const SizedBox(height: AppTheme.spacingXXS),
-          Text(
-            'This message might be overwhelming. Consider formatting it.',
-            style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
+          childrenPadding: const EdgeInsets.only(
+            left: AppTheme.spacingS,
+            right: AppTheme.spacingS,
+            bottom: AppTheme.spacingS,
           ),
-          const SizedBox(height: AppTheme.spacingS),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton(
-              onPressed: () {
-                showDialog(
-                  context: context,
-                  builder: (context) => Dialog(
-                    child: MessageFormatterPanel(
-                      originalMessage: widget.draftMessage!,
-                      onFormatted: (formatted) {
-                        if (widget.onTemplateSelected != null) {
-                          widget.onTemplateSelected!(formatted);
-                        }
-                        Navigator.pop(context);
-                      },
-                    ),
-                  ),
-                );
-              },
-              style: OutlinedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(
-                  vertical: AppTheme.spacingXS,
-                ),
-                side: const BorderSide(color: Colors.orange),
-              ),
-              child: const Text(
-                'Format Message',
-                style: TextStyle(fontSize: AppTheme.fontSizeXS),
-              ),
+          initiallyExpanded: _reasoningExpanded,
+          onExpansionChanged: (expanded) => setState(() => _reasoningExpanded = expanded),
+          leading: Icon(
+            Icons.info_outline,
+            size: 16,
+            color: isDark ? AppTheme.gray500 : AppTheme.gray600,
+          ),
+          title: Text(
+            'Why This Score?',
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: isDark ? AppTheme.gray400 : AppTheme.gray700,
+              fontWeight: AppTheme.fontWeightMedium,
             ),
           ),
-        ],
+          children: [
+            Text(
+              analysis.reasoning!,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: isDark ? AppTheme.gray500 : AppTheme.gray600,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

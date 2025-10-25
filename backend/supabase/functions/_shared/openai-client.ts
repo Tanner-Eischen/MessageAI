@@ -103,7 +103,11 @@ export class OpenAIClient {
    * Extract text content from the response
    */
   extractTextContent(response: OpenAIResponse): string {
-    return response.choices[0]?.message?.content || '';
+    const content = response.choices[0]?.message?.content || '';
+    if (!content) {
+      console.warn("⚠️ Empty response content from OpenAI");
+    }
+    return content;
   }
 
   /**
@@ -140,6 +144,9 @@ export class OpenAIClient {
     // Remove markdown code blocks if present
     let cleaned = responseText.trim();
     
+    // Log the raw response for debugging
+    console.log("🔍 Raw response from OpenAI:", cleaned.substring(0, 200) + (cleaned.length > 200 ? "..." : ""));
+    
     // Remove ```json and ``` markers
     if (cleaned.startsWith('```json')) {
       cleaned = cleaned.slice(7);
@@ -153,12 +160,26 @@ export class OpenAIClient {
     
     cleaned = cleaned.trim();
     
+    console.log("✨ Cleaned response:", cleaned.substring(0, 200) + (cleaned.length > 200 ? "..." : ""));
+    
     try {
-      return JSON.parse(cleaned) as T;
+      const parsed = JSON.parse(cleaned) as T;
+      console.log("✅ JSON parsed successfully");
+      return parsed;
     } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      const contextSize = 500;
+      const errorContext = cleaned.length > contextSize 
+        ? cleaned.substring(0, contextSize) + "\n... [truncated]"
+        : cleaned;
+      
+      console.error("❌ JSON parsing failed!");
+      console.error("Error:", errorMsg);
+      console.error("Response context:", errorContext);
+      
       throw new Error(
-        `Failed to parse JSON response: ${error instanceof Error ? error.message : 'Unknown error'}\n` +
-        `Response: ${cleaned}`
+        `Failed to parse JSON response: ${errorMsg}\n` +
+        `Response preview: ${errorContext}`
       );
     }
   }
@@ -172,17 +193,29 @@ export class OpenAIClient {
     systemPrompt: string,
     options: Partial<OpenAIRequestOptions> = {}
   ): Promise<T> {
-    const responseText = await this.sendSimpleMessage(
-      userMessage,
-      systemPrompt,
-      {
-        ...options,
-        temperature: 0.3, // Lower temperature for more consistent JSON
-        response_format: { type: 'json_object' }, // Request JSON format
-      }
-    );
+    try {
+      console.log("📤 Preparing JSON request to OpenAI...");
+      console.log("System prompt length:", systemPrompt.length);
+      console.log("User message length:", userMessage.length);
+      
+      const responseText = await this.sendSimpleMessage(
+        userMessage,
+        systemPrompt,
+        {
+          ...options,
+          temperature: 0.3, // Lower temperature for more consistent JSON
+          response_format: { type: 'json_object' }, // Request JSON format
+        }
+      );
 
-    return this.parseJSONResponse<T>(responseText);
+      console.log("📥 Received response from OpenAI, attempting to parse...");
+      const result = this.parseJSONResponse<T>(responseText);
+      console.log("🎯 Successfully parsed JSON response");
+      return result;
+    } catch (error) {
+      console.error("💥 Failed to get JSON response:", error);
+      throw error;
+    }
   }
 }
 

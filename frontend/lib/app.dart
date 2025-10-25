@@ -112,6 +112,7 @@ class AuthGate extends ConsumerWidget {
           return AuthScreen(
             onAuthSuccess: () {
               // Refresh auth state - this will trigger a rebuild
+              // ignore: unused_result
               ref.refresh(isAuthenticatedProvider);
             },
           );

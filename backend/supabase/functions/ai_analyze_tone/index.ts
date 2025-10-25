@@ -10,6 +10,12 @@ import {
   assessResponseAnxietyRisk,
   type ToneAnalysisResult,
 } from "../_shared/prompts/enhanced-tone-analysis.ts";
+import {
+  BOUNDARY_ANALYSIS_SYSTEM_PROMPT,
+  generateBoundaryAnalysisPrompt,
+  validateBoundaryAnalysis,
+  type BoundaryAnalysisResult,
+} from "../_shared/prompts/boundary-analysis.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -20,7 +26,12 @@ const corsHeaders = {
 interface AnalyzeRequest {
   message_id: string;
   message_body: string;
-  conversation_context?: string[]; // Optional recent messages for context
+  conversation_context?: string[];
+  // 🆕 PHASE 1: Boundary detection parameters
+  isFromCurrentUser?: boolean;
+  timestamp?: string;
+  includeBoundaryAnalysis?: boolean;
+  skipDatabaseStorage?: boolean; // 🆕 NEW: Skip DB storage for auto-analysis
 }
 
 serve(async (req) => {
@@ -54,7 +65,7 @@ serve(async (req) => {
 
     // Parse request body
     const requestBody: AnalyzeRequest = await req.json();
-    const { message_id, message_body, conversation_context } = requestBody;
+    const { message_id, message_body, conversation_context, includeBoundaryAnalysis, timestamp, skipDatabaseStorage } = requestBody;
 
     if (!message_id || !message_body) {
       throw new Error("message_id and message_body are required");
@@ -110,9 +121,20 @@ serve(async (req) => {
     );
 
     console.log("📥 Received response from OpenAI");
+    console.log("Analysis result structure:", {
+      tone: analysisResult.tone,
+      urgency_level: analysisResult.urgency_level,
+      intent: analysisResult.intent,
+      confidence_score: analysisResult.confidence_score,
+      intensity: analysisResult.intensity,
+      secondary_tones: analysisResult.secondary_tones?.length || 0,
+      hasContextFlags: !!analysisResult.context_flags,
+    });
 
     // Validate the result
+    console.log("🔍 Validating analysis result...");
     const validatedResult = validateToneAnalysis(analysisResult);
+    console.log("✅ Validation successful");
 
     // Assess response anxiety risk for neurodivergent users
     const anxietyAssessment = assessResponseAnxietyRisk(validatedResult);
@@ -120,40 +142,79 @@ serve(async (req) => {
 
     console.log(`✅ Analysis complete: ${validatedResult.tone} (${validatedResult.urgency_level})`);
 
-    // Store the analysis in the database
-    const now = Math.floor(Date.now() / 1000);
+    // 🆕 PHASE 1: Analyze for boundary violations (only for incoming messages)
+    let boundaryAnalysis: BoundaryAnalysisResult | null = null;
+    if (includeBoundaryAnalysis) {
+      try {
+        console.log("🚨 Analyzing for boundary violations...");
+        const boundaryPrompt = generateBoundaryAnalysisPrompt(
+          message_body,
+          timestamp
+        );
 
-    const { data: storedAnalysis, error: insertError } = await supabase
-      .from("message_ai_analysis")
-      .insert({
-        message_id,
-        tone: validatedResult.tone,
-        urgency_level: validatedResult.urgency_level,
-        intent: validatedResult.intent,
-        confidence_score: validatedResult.confidence_score,
-        analysis_timestamp: now,
-        // ✅ NEW ENHANCED FIELDS
-        intensity: validatedResult.intensity,
-        secondary_tones: validatedResult.secondary_tones,
-        context_flags: validatedResult.context_flags,
-        anxiety_assessment: anxietyAssessment,
-      })
-      .select()
-      .single();
+        const boundaryResult = await openai.sendMessageForJSON<BoundaryAnalysisResult>(
+          boundaryPrompt,
+          BOUNDARY_ANALYSIS_SYSTEM_PROMPT
+        );
 
-    if (insertError) {
-      console.error("❌ Failed to store analysis:", insertError);
-      throw new Error(`Failed to store analysis: ${insertError.message}`);
+        boundaryAnalysis = validateBoundaryAnalysis(boundaryResult);
+        console.log("🛡️ Boundary analysis:", boundaryAnalysis);
+      } catch (boundaryError) {
+        console.warn("⚠️ Boundary analysis failed, continuing:", boundaryError);
+        // Don't fail the entire request if boundary analysis fails
+        boundaryAnalysis = {
+          hasViolation: false,
+          type: "none",
+          explanation: "",
+          suggestedResponses: [],
+          severity: 1,
+        };
+      }
     }
 
-    console.log("💾 Analysis stored successfully");
+    // 🆕 CONDITIONAL STORAGE: Only store if not auto-analysis
+    let storedAnalysis: any = null; // 🔧 FIXED: Declare outside conditional
+    if (!skipDatabaseStorage) {
+      // Store the analysis in the database
+      const now = Math.floor(Date.now() / 1000);
+
+      const { data: insertedData, error: insertError } = await supabase
+        .from("message_ai_analysis")
+        .insert({
+          message_id,
+          tone: validatedResult.tone,
+          urgency_level: validatedResult.urgency_level,
+          intent: validatedResult.intent,
+          confidence_score: validatedResult.confidence_score,
+          analysis_timestamp: now,
+          // ✅ NEW ENHANCED FIELDS
+          intensity: validatedResult.intensity,
+          secondary_tones: validatedResult.secondary_tones,
+          context_flags: validatedResult.context_flags,
+          anxiety_assessment: anxietyAssessment,
+          // 🆕 PHASE 1: Boundary analysis
+          boundary_analysis: boundaryAnalysis,
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error("❌ Failed to store analysis:", insertError);
+        throw new Error(`Failed to store analysis: ${insertError.message}`);
+      }
+
+      storedAnalysis = insertedData; // 🔧 FIXED: Assign to outer variable
+      console.log("💾 Analysis stored successfully");
+    } else {
+      console.log("⏭️ Skipping database storage (auto-analysis mode)");
+    }
 
     // Return the analysis result
     return new Response(
       JSON.stringify({
         success: true,
         analysis: {
-          id: storedAnalysis.id,
+          id: storedAnalysis?.id, // 🔧 FIXED: Now safely handles undefined
           message_id,
           tone: validatedResult.tone,
           urgency_level: validatedResult.urgency_level,
@@ -165,6 +226,8 @@ serve(async (req) => {
           secondary_tones: validatedResult.secondary_tones,
           context_flags: validatedResult.context_flags,
           anxiety_assessment: anxietyAssessment,
+          // 🆕 PHASE 1: Boundary analysis
+          boundary_analysis: boundaryAnalysis,
           figurative_language_detected: figurativeLanguage,
         },
       }),

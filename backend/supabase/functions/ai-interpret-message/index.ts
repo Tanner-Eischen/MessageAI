@@ -50,7 +50,7 @@ serve(async (req) => {
     );
 
     // Call OpenAI with enhanced prompt
-    const openai = new OpenAIClient();
+    const openai = new OpenAIClient(Deno.env.get('OPENAI_API_KEY')!);
     const analysisResult = await openai.sendMessageForJSON<EnhancedToneAnalysisResult>(
       userPrompt,
       SMART_MESSAGE_INTERPRETER_PROMPT,
@@ -65,21 +65,27 @@ serve(async (req) => {
     // Store in database if message_id provided
     if (message_id) {
       const now = Math.floor(Date.now() / 1000);
+      // 🔧 FIXED: Removed non-existent user_id column, added missing fields
       await supabase
         .from('message_ai_analysis')
         .upsert({
           message_id,
-          user_id: user.id,
+          // Core fields
           tone: validatedResult.tone,
           urgency_level: validatedResult.urgency_level,
           intent: validatedResult.intent,
           confidence_score: validatedResult.confidence_score,
+          // Enhanced fields
           intensity: validatedResult.intensity,
           context_flags: validatedResult.context_flags,
-          // Enhanced fields
+          secondary_tones: validatedResult.secondary_tones,
+          anxiety_assessment: validatedResult.response_anxiety_assessment,
+          // Phase 1: Smart Message Interpreter fields
           rsd_triggers: validatedResult.rsd_triggers,
           alternative_interpretations: validatedResult.message_interpretations,
           evidence: validatedResult.evidence,
+          figurative_language_detected: validatedResult.figurative_language_detected,
+          // Metadata
           analysis_timestamp: now,
           updated_at: now,
         });

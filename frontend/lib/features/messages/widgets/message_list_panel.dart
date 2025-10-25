@@ -1,22 +1,25 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:messageai/core/theme/app_theme.dart';
 import 'package:messageai/data/drift/app_db.dart';
-import 'package:messageai/features/messages/widgets/tone_badge.dart';
+import 'package:messageai/features/messages/widgets/draft_feedback_panel.dart';
+import 'package:messageai/features/messages/widgets/message_bubble.dart';
 import 'package:messageai/features/messages/widgets/tone_detail_sheet.dart';
 import 'package:messageai/state/ai_providers.dart';
+import 'package:messageai/services/ai_analysis_service.dart';
 import 'package:messageai/widgets/user_avatar.dart';
 
 /// Panel containing the message list and compose bar
 /// This widget slides up and down over the AI insights background
 class MessageListPanel extends ConsumerWidget {
-  final List<Message> messages;
+  final List<Message>? messages;
   final String? currentUserId;
-  final Map<String, List<Receipt>> receiptsCache;
-  final Set<String> typingUsers;
-  final Set<String> onlineUsers;
+  final Map<String, List<Receipt>>? receiptsCache;
+  final Set<String>? typingUsers;
+  final Set<String>? onlineUsers;
   final TextEditingController messageController;
   final bool isSending;
   final bool isUploadingImage;
@@ -24,6 +27,9 @@ class MessageListPanel extends ConsumerWidget {
   final VoidCallback onSendMessage;
   final VoidCallback onPickImage;
   final VoidCallback onClearImage;
+  final ScrollController? scrollController; // For DraggableScrollableSheet
+  final bool showComposeBar; // Whether to show the compose bar
+  final bool _composeBarOnly; // Internal flag for compose bar only mode
 
   const MessageListPanel({
     Key? key,
@@ -39,18 +45,47 @@ class MessageListPanel extends ConsumerWidget {
     required this.onSendMessage,
     required this.onPickImage,
     required this.onClearImage,
-  }) : super(key: key);
+    this.scrollController,
+    this.showComposeBar = true,
+  })  : _composeBarOnly = false,
+        super(key: key);
+
+  // Constructor for compose bar only (pinned at bottom)
+  const MessageListPanel.composeBarOnly({
+    Key? key,
+    required this.messageController,
+    required this.isSending,
+    required this.isUploadingImage,
+    required this.selectedImage,
+    required this.onSendMessage,
+    required this.onPickImage,
+    required this.onClearImage,
+  })  : messages = null,
+        currentUserId = null,
+        receiptsCache = null,
+        typingUsers = null,
+        onlineUsers = null,
+        scrollController = null,
+        showComposeBar = true,
+        _composeBarOnly = true,
+        super(key: key);
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     
+    // If compose bar only mode, just return the compose bar
+    if (_composeBarOnly) {
+      return _buildComposeBar(context, ref, isDark);
+    }
+    
+    // Otherwise, show message list and optionally compose bar
     return Column(
       children: [
         // Message list
         Expanded(
-          child: messages.isEmpty
+          child: messages == null || messages!.isEmpty
               ? Center(
                   child: Text(
                     'No messages yet. Start the conversation!',
@@ -58,38 +93,44 @@ class MessageListPanel extends ConsumerWidget {
                   ),
                 )
               : ListView.builder(
+                  controller: scrollController, // Use provided scroll controller for dragging
                   reverse: true,
                   padding: const EdgeInsets.symmetric(
                     vertical: AppTheme.spacingS,
                     horizontal: AppTheme.spacingXS,
                   ),
-                  itemCount: messages.length + (typingUsers.isNotEmpty ? 1 : 0),
+                  itemCount: messages!.length + ((typingUsers?.isNotEmpty ?? false) ? 1 : 0),
                   itemBuilder: (context, index) {
                     // Show typing indicator as first item (at bottom)
-                    if (index == 0 && typingUsers.isNotEmpty) {
+                    if (index == 0 && (typingUsers?.isNotEmpty ?? false)) {
                       return _buildTypingIndicator(context, isDark);
                     }
                     
                     // Adjust index if typing indicator is showing
-                    final messageIndex = typingUsers.isNotEmpty ? index - 1 : index;
-                    final message = messages[messages.length - 1 - messageIndex];
+                    final messageIndex = (typingUsers?.isNotEmpty ?? false) ? index - 1 : index;
+                    final message = messages![messages!.length - 1 - messageIndex];
                     final isOwn = message.senderId == currentUserId;
-                    final isOnline = onlineUsers.contains(message.senderId);
+                    final isOnline = onlineUsers?.contains(message.senderId) ?? false;
 
-                    return _buildMessageBubble(
-                      context,
-                      ref,
-                      message,
-                      isOwn,
-                      isOnline,
-                      isDark,
+                    // 🔧 FIXED: Add key based on message ID to prevent unnecessary rebuilds
+                    return KeyedSubtree(
+                      key: ValueKey(message.id),
+                      child: _buildMessageBubble(
+                        context,
+                        ref,
+                        message,
+                        isOwn,
+                        isOnline,
+                        isDark,
+                      ),
                     );
                   },
                 ),
         ),
         
-        // Compose bar
-        _buildComposeBar(context, isDark),
+        // Compose bar (conditionally shown)
+        if (showComposeBar)
+          _buildComposeBar(context, ref, isDark),
       ],
     );
   }
@@ -102,8 +143,9 @@ class MessageListPanel extends ConsumerWidget {
     bool isOnline,
     bool isDark,
   ) {
-    // Fetch AI analysis for this message
-    final analysisAsync = ref.watch(messageAnalysisProvider(message.id));
+    // 🔧 FIXED: Use the actual MessageBubble widget instead of inline building!
+    // This ensures all the analysis event listeners and UI updates work
+    
     return Align(
       alignment: isOwn ? Alignment.centerRight : Alignment.centerLeft,
       child: Row(
@@ -146,128 +188,13 @@ class MessageListPanel extends ConsumerWidget {
             ),
           ],
           
-          // Message bubble
-          Container(
-            constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width * 0.65,
-            ),
-            margin: EdgeInsets.only(
-              left: isOwn ? 64 : 0,
-              right: isOwn ? AppTheme.spacingS : 64,
-              top: AppTheme.spacingXXS,
-              bottom: AppTheme.spacingXXS,
-            ),
-            padding: const EdgeInsets.symmetric(
-              horizontal: AppTheme.spacingS,
-              vertical: AppTheme.spacingS,
-            ),
-            decoration: BoxDecoration(
-              color: isOwn
-                  ? (isDark ? AppTheme.darkGray300 : AppTheme.gray200)
-                  : (isDark ? AppTheme.darkGray100 : AppTheme.white),
-              borderRadius: BorderRadius.only(
-                topLeft: const Radius.circular(AppTheme.radiusXL),
-                topRight: const Radius.circular(AppTheme.radiusXL),
-                bottomLeft: Radius.circular(isOwn ? AppTheme.radiusXL : AppTheme.radiusXS),
-                bottomRight: Radius.circular(isOwn ? AppTheme.radiusXS : AppTheme.radiusXL),
-              ),
-              border: !isOwn
-                  ? Border.all(
-                      color: isDark ? AppTheme.darkGray300 : AppTheme.gray300,
-                      width: 1,
-                    )
-                  : null,
-            ),
-            child: Column(
-              crossAxisAlignment: isOwn ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-              children: [
-                // Show image if present
-                if (message.mediaUrl != null && message.mediaUrl!.isNotEmpty) ...[
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(AppTheme.radiusS),
-                    child: Image.network(
-                      message.mediaUrl!,
-                      width: 250,
-                      fit: BoxFit.cover,
-                      loadingBuilder: (context, child, loadingProgress) {
-                        if (loadingProgress == null) return child;
-                        return Container(
-                          width: 250,
-                          height: 250,
-                          color: isDark ? AppTheme.darkGray200 : AppTheme.gray200,
-                          child: Center(
-                            child: CircularProgressIndicator(
-                              value: loadingProgress.expectedTotalBytes != null
-                                  ? loadingProgress.cumulativeBytesLoaded /
-                                      loadingProgress.expectedTotalBytes!
-                                  : null,
-                            ),
-                          ),
-                        );
-                      },
-                      errorBuilder: (context, error, stackTrace) {
-                        return Container(
-                          width: 250,
-                          height: 250,
-                          color: isDark ? AppTheme.darkGray200 : AppTheme.gray200,
-                          child: const Icon(Icons.broken_image, size: 50),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: AppTheme.spacingXXS),
-                ],
-                
-                // Message text
-                Text(
-                  message.body,
-                  style: TextStyle(
-                    color: isDark ? AppTheme.white : AppTheme.black,
-                    fontSize: AppTheme.fontSizeM,
-                    height: AppTheme.lineHeightNormal,
-                  ),
-                ),
-                
-                const SizedBox(height: AppTheme.spacingXXS),
-                
-                // Timestamp and delivery indicator
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      _formatTime(message.createdAt),
-                      style: TextStyle(
-                        fontSize: AppTheme.fontSizeXS,
-                        color: isDark ? AppTheme.gray600 : AppTheme.gray600,
-                      ),
-                    ),
-                    if (isOwn) ...[
-                      const SizedBox(width: AppTheme.spacingXXS),
-                      _buildDeliveryIndicator(message),
-                    ],
-                  ],
-                ),
-                
-                // AI Analysis Badge (shows tone analysis if available)
-                analysisAsync.when(
-                  data: (analysis) {
-                    if (analysis == null) return const SizedBox.shrink();
-                    return Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: ToneBadge(
-                        analysis: analysis,
-                        onTap: () => ToneDetailSheet.show(
-                          context,
-                          analysis,
-                          message.body,
-                        ),
-                      ),
-                    );
-                  },
-                  loading: () => const SizedBox.shrink(),
-                  error: (_, __) => const SizedBox.shrink(),
-                ),
-              ],
+          // 🔧 FIXED: Use MessageBubble widget instead of inline GestureDetector
+          // 🟣 UPDATED: Add sparkle indicator to the most recent received message
+          Flexible(
+            child: MessageBubble(
+              message: message,
+              isFromCurrentUser: isOwn,
+              isMostRecentReceived: !isOwn && messages != null && messages!.isNotEmpty && messages!.last.id == message.id,
             ),
           ),
         ],
@@ -275,8 +202,211 @@ class MessageListPanel extends ConsumerWidget {
     );
   }
   
+  /// Show context menu with AI features and copy/paste options
+  void _showMessageContextMenu(
+    BuildContext context,
+    WidgetRef ref,
+    Message message,
+    bool isOwn,
+    bool isDark,
+  ) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.transparent,
+      builder: (context) => GestureDetector(
+        onTap: () => Navigator.pop(context),
+        child: Material(
+          color: Colors.transparent,
+          child: Stack(
+            children: [
+              // Blur background
+              Positioned.fill(
+                child: Container(
+                  color: Colors.black.withOpacity(0.1),
+                ),
+              ),
+              // Center popup
+              Center(
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 40),
+                  decoration: BoxDecoration(
+                    color: isDark ? AppTheme.darkGray100.withOpacity(0.95) : AppTheme.white.withOpacity(0.95),
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.3),
+                        blurRadius: 30,
+                        spreadRadius: 5,
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // AI Features (for received messages)
+                      if (!isOwn) ...[
+                        _buildPopupOption(
+                          context,
+                          ref,
+                          message,
+                          icon: Icons.psychology_outlined,
+                          label: 'Analyze Message',
+                          color: const Color(0xFF7C3AED), // Purple - interpreter
+                          isDark: isDark,
+                          isFirst: true,
+                        ),
+                        Divider(height: 1, color: isDark ? AppTheme.darkGray300 : AppTheme.gray300),
+                      ],
+                      
+                      // Copy
+                      _buildCopyOption(
+                        context,
+                        message,
+                        isDark: isDark,
+                        isFirst: isOwn,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildPopupOption(
+    BuildContext context,
+    WidgetRef ref,
+    Message message, {
+    required IconData icon,
+    required String label,
+    required Color color,
+    required bool isDark,
+    bool isFirst = false,
+  }) {
+    return InkWell(
+      onTap: () async {
+        Navigator.pop(context);
+        
+        // Show loading indicator
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const Center(
+            child: CircularProgressIndicator(),
+          ),
+        );
+        
+        try {
+          // Trigger analysis if it doesn't exist
+          final requestAnalysis = ref.read(requestAnalysisProvider);
+          final analysis = await requestAnalysis(message.id, message.body);
+          
+          if (context.mounted) {
+            Navigator.pop(context); // Close loading
+            
+            if (analysis != null) {
+              // 🆕 Removed: Provider invalidation no longer needed
+              // Analysis is now handled in MessageBubble widget for manual long-press only
+              
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Analysis complete - view in message details'),
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Failed to analyze message. Please try again.'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
+          }
+        } catch (e) {
+          if (context.mounted) {
+            Navigator.pop(context); // Close loading
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Error: $e'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      },
+      borderRadius: BorderRadius.vertical(
+        top: isFirst ? const Radius.circular(14) : Radius.zero,
+      ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 22, color: color),
+            const SizedBox(width: 12),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w500,
+                color: color,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildCopyOption(
+    BuildContext context,
+    Message message, {
+    required bool isDark,
+    bool isFirst = false,
+  }) {
+    return InkWell(
+      onTap: () {
+        Clipboard.setData(ClipboardData(text: message.body));
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Copied to clipboard'),
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 1),
+          ),
+        );
+      },
+      borderRadius: BorderRadius.vertical(
+        top: isFirst ? const Radius.circular(14) : Radius.zero,
+        bottom: const Radius.circular(14),
+      ),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.content_copy, size: 22, color: isDark ? AppTheme.gray400 : AppTheme.gray700),
+            const SizedBox(width: 12),
+            Text(
+              'Copy',
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w500,
+                color: isDark ? AppTheme.gray400 : AppTheme.gray700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
   Widget _buildTypingIndicator(BuildContext context, bool isDark) {
-    final count = typingUsers.length;
+    final count = typingUsers?.length ?? 0;
     final text = count == 1 
         ? 'Someone is typing...' 
         : '$count people are typing...';
@@ -326,7 +456,7 @@ class MessageListPanel extends ConsumerWidget {
     );
   }
   
-  Widget _buildComposeBar(BuildContext context, bool isDark) {
+  Widget _buildComposeBar(BuildContext context, WidgetRef ref, bool isDark) {
     return Container(
       padding: const EdgeInsets.all(AppTheme.spacingS),
       decoration: BoxDecoration(
@@ -342,6 +472,37 @@ class MessageListPanel extends ConsumerWidget {
         top: false,
         child: Column(
           children: [
+            // ✅ PHASE 2: Draft Feedback Panel
+            Consumer(
+              builder: (context, ref, child) {
+                final draftAnalysis = ref.watch(draftAnalysisProvider);
+                
+                return draftAnalysis.when(
+                  data: (analysis) {
+                    if (analysis == null) return const SizedBox.shrink();
+                    
+                    return DraftFeedbackPanel(
+                      analysis: analysis,
+                      draftMessage: messageController.text,
+                      onApplySuggestion: (suggestion) {
+                        messageController.text = suggestion;
+                      },
+                      onTemplateSelected: (template) {
+                        messageController.text = template;
+                      },
+                      onClose: () {
+                        ref.read(draftAnalysisProvider.notifier).clear();
+                      },
+                    );
+                  },
+                  loading: () => const LinearProgressIndicator(
+                    backgroundColor: Colors.transparent,
+                  ),
+                  error: (_, __) => const SizedBox.shrink(),
+                );
+              },
+            ),
+            
             // Show selected image preview
             if (selectedImage != null) ...[
               Container(
@@ -433,7 +594,30 @@ class MessageListPanel extends ConsumerWidget {
                   ),
                 ),
                 
-                const SizedBox(width: AppTheme.spacingS),
+                const SizedBox(width: AppTheme.spacingXXS),
+                
+                // ✅ PHASE 2: Check Message Button (Draft Analysis)
+                Consumer(
+                  builder: (context, ref, child) {
+                    final hasText = messageController.text.trim().isNotEmpty;
+                    
+                    return IconButton(
+                      onPressed: !hasText ? null : () {
+                        ref.read(draftAnalysisProvider.notifier).analyzeDraft(
+                          draftMessage: messageController.text,
+                        );
+                      },
+                      icon: Icon(
+                        Icons.auto_awesome,
+                        color: !hasText
+                            ? (isDark ? AppTheme.gray600 : AppTheme.gray400)
+                            : Colors.blue, // Blue - Adaptive Response Assistant feature
+                      ),
+                      tooltip: 'Check message confidence',
+                      padding: const EdgeInsets.all(AppTheme.spacingS),
+                    );
+                  },
+                ),
                 
                 // Send button
                 Container(
@@ -470,31 +654,34 @@ class MessageListPanel extends ConsumerWidget {
   }
   
   Widget _buildDeliveryIndicator(Message message) {
-    final receipts = receiptsCache[message.id] ?? [];
+    // Default to single checkmark if no receipts
+    final receipts = receiptsCache?[message.id] ?? [];
     
     // Filter out own receipts (shouldn't exist for sent messages, but just in case)
     final otherReceipts = receipts.where((r) => r.userId != currentUserId).toList();
     
-    final hasDelivered = otherReceipts.any((r) => r.status == 'delivered' || r.status == 'read');
-    final hasRead = otherReceipts.any((r) => r.status == 'read');
+    // Check receipt statuses (case-insensitive to be safe)
+    final hasRead = otherReceipts.any((r) => r.status.toLowerCase() == 'read');
+    final hasDelivered = otherReceipts.any((r) => r.status.toLowerCase() == 'delivered');
 
     IconData icon;
     Color color;
 
+    // Always show at least a single checkmark for sent messages
     if (hasRead) {
-      icon = Icons.done_all;
+      icon = Icons.done_all; // Double checkmark for read
       color = AppTheme.accentBlue;
-    } else if (hasDelivered) {
-      icon = Icons.done_all;
+    } else if (hasDelivered || receipts.isNotEmpty) {
+      icon = Icons.done_all; // Double checkmark for delivered
       color = AppTheme.gray600;
     } else {
-      icon = Icons.done;
+      icon = Icons.done; // Single checkmark for sent (default)
       color = AppTheme.gray600;
     }
 
     return Icon(
       icon,
-      size: 14,
+      size: 16, // Slightly larger for better visibility
       color: color,
     );
   }

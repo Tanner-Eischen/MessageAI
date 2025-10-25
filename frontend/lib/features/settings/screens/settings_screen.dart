@@ -4,6 +4,8 @@ import 'package:messageai/features/auth/screens/auth_screen.dart';
 import 'package:messageai/services/avatar_service.dart';
 import 'package:messageai/core/errors/app_error.dart';
 import 'package:messageai/core/errors/error_ui.dart';
+import 'package:messageai/models/ai_feature.dart';
+import 'package:messageai/features/settings/widgets/ai_feature_tile.dart';
 
 /// User settings and account management screen
 class SettingsScreen extends StatefulWidget {
@@ -20,11 +22,46 @@ class _SettingsScreenState extends State<SettingsScreen> with ErrorHandlerMixin 
   bool _isLoading = false;
   bool _isUploadingAvatar = false;
   String? _avatarUrl;
-
+  
+  // 🆕 PHASE 4: AI Features state
+  late Map<AIFeatureType, AIFeature> _aiFeatures;
+  
   @override
   void initState() {
     super.initState();
     _loadProfile();
+    _initializeAIFeatures();
+  }
+  
+  /// Initialize all AI features as enabled by default
+  void _initializeAIFeatures() {
+    _aiFeatures = {
+      AIFeatureType.smartMessageInterpreter: AIFeature(
+        type: AIFeatureType.smartMessageInterpreter,
+        isEnabled: true,
+      ),
+      AIFeatureType.adaptiveResponseAssistant: AIFeature(
+        type: AIFeatureType.adaptiveResponseAssistant,
+        isEnabled: true,
+      ),
+      AIFeatureType.smartInboxFilters: AIFeature(
+        type: AIFeatureType.smartInboxFilters,
+        isEnabled: true,
+      ),
+      AIFeatureType.ragContextPanel: AIFeature(
+        type: AIFeatureType.ragContextPanel,
+        isEnabled: true,
+      ),
+    };
+  }
+  
+  /// Handle AI feature toggle
+  void _handleFeatureToggle(AIFeatureType type, bool enabled) {
+    setState(() {
+      _aiFeatures[type]!.isEnabled = enabled;
+    });
+    // TODO: Save preference to backend/local storage
+    print('🤖 ${_aiFeatures[type]!.config.title}: $enabled');
   }
 
   Future<void> _loadProfile() async {
@@ -61,7 +98,7 @@ class _SettingsScreenState extends State<SettingsScreen> with ErrorHandlerMixin 
       ),
       body: ListView(
         children: [
-          // Profile Section
+          // Profile Section (always visible)
           Container(
             padding: const EdgeInsets.all(24),
             color: Theme.of(context).colorScheme.surfaceContainer,
@@ -123,112 +160,142 @@ class _SettingsScreenState extends State<SettingsScreen> with ErrorHandlerMixin 
             ),
           ),
 
+          const SizedBox(height: 16),
+
+          // 🆕 AI FEATURES SECTION - ALWAYS EXPANDED AT TOP
+          _buildSectionTitle('AI Features'),
           const SizedBox(height: 8),
+          ...AIFeatureType.values.map((type) {
+            return AIFeatureTile(
+              feature: _aiFeatures[type]!,
+              onToggle: (enabled) => _handleFeatureToggle(type, enabled),
+            );
+          }).toList(),
 
-          // Account Settings
-          _buildSectionTitle('Account'),
-          _buildSettingsTile(
+          const Divider(height: 32),
+
+          // 🆕 COLLAPSIBLE SECTIONS - Progressive Disclosure
+          _buildCollapsibleSection(
+            key: 'account',
+            title: 'Account Settings',
             icon: Icons.person,
-            title: 'Display Name',
-            subtitle: email.split('@')[0],
-            onTap: () => _showEditDisplayNameDialog(),
-          ),
-          _buildSettingsTile(
-            icon: Icons.email,
-            title: 'Email',
-            subtitle: email,
-            onTap: () {},
-          ),
-          _buildSettingsTile(
-            icon: Icons.lock,
-            title: 'Change Password',
-            onTap: () => _showComingSoonDialog('Change Password'),
-          ),
-
-          const Divider(height: 1),
-
-          // Notifications
-          _buildSectionTitle('Notifications'),
-          SwitchListTile(
-            secondary: const Icon(Icons.notifications),
-            title: const Text('Push Notifications'),
-            subtitle: const Text('Receive message notifications'),
-            value: _notificationsEnabled,
-            onChanged: (value) {
-              setState(() => _notificationsEnabled = value);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    value ? 'Notifications enabled' : 'Notifications disabled',
-                  ),
-                ),
-              );
-            },
-          ),
-          _buildSettingsTile(
-            icon: Icons.volume_up,
-            title: 'Notification Sound',
-            subtitle: 'Default',
-            onTap: () => _showComingSoonDialog('Notification Sounds'),
+            children: [
+              _buildSettingsTile(
+                icon: Icons.person,
+                title: 'Display Name',
+                subtitle: email.split('@')[0],
+                onTap: () => _showEditDisplayNameDialog(),
+              ),
+              _buildSettingsTile(
+                icon: Icons.email,
+                title: 'Email',
+                subtitle: email,
+                onTap: () {},
+              ),
+              _buildSettingsTile(
+                icon: Icons.lock,
+                title: 'Change Password',
+                onTap: () => _showComingSoonDialog('Change Password'),
+              ),
+            ],
           ),
 
-          const Divider(height: 1),
+          _buildCollapsibleSection(
+            key: 'notifications',
+            title: 'Notifications',
+            icon: Icons.notifications,
+            children: [
+              SwitchListTile(
+                secondary: const Icon(Icons.notifications),
+                title: const Text('Push Notifications'),
+                subtitle: const Text('Receive message notifications'),
+                value: _notificationsEnabled,
+                onChanged: (value) {
+                  setState(() => _notificationsEnabled = value);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        value ? 'Notifications enabled' : 'Notifications disabled',
+                      ),
+                    ),
+                  );
+                },
+              ),
+              _buildSettingsTile(
+                icon: Icons.volume_up,
+                title: 'Notification Sound',
+                subtitle: 'Default',
+                onTap: () => _showComingSoonDialog('Notification Sounds'),
+              ),
+            ],
+          ),
 
-          // Privacy & Security
-          _buildSectionTitle('Privacy & Security'),
-          _buildSettingsTile(
+          _buildCollapsibleSection(
+            key: 'security',
+            title: 'Privacy & Security',
             icon: Icons.shield,
-            title: 'Blocked Users',
-            onTap: () => _showComingSoonDialog('Blocked Users'),
-          ),
-          _buildSettingsTile(
-            icon: Icons.visibility,
-            title: 'Online Status',
-            subtitle: 'Visible to everyone',
-            onTap: () => _showComingSoonDialog('Online Status Settings'),
-          ),
-          _buildSettingsTile(
-            icon: Icons.check_circle,
-            title: 'Read Receipts',
-            subtitle: 'Enabled',
-            onTap: () => _showComingSoonDialog('Read Receipts Settings'),
+            children: [
+              _buildSettingsTile(
+                icon: Icons.block,
+                title: 'Blocked Users',
+                onTap: () => _showComingSoonDialog('Blocked Users'),
+              ),
+              _buildSettingsTile(
+                icon: Icons.visibility,
+                title: 'Online Status',
+                subtitle: 'Visible to everyone',
+                onTap: () => _showComingSoonDialog('Online Status Settings'),
+              ),
+              _buildSettingsTile(
+                icon: Icons.check_circle,
+                title: 'Read Receipts',
+                subtitle: 'Enabled',
+                onTap: () => _showComingSoonDialog('Read Receipts Settings'),
+              ),
+            ],
           ),
 
-          const Divider(height: 1),
-
-          // Storage
-          _buildSectionTitle('Storage'),
-          _buildSettingsTile(
+          _buildCollapsibleSection(
+            key: 'storage',
+            title: 'Storage',
             icon: Icons.storage,
-            title: 'Storage Usage',
-            subtitle: 'Calculate storage...',
-            onTap: () => _showComingSoonDialog('Storage Management'),
-          ),
-          _buildSettingsTile(
-            icon: Icons.delete_sweep,
-            title: 'Clear Cache',
-            onTap: () => _showClearCacheDialog(),
+            children: [
+              _buildSettingsTile(
+                icon: Icons.storage,
+                title: 'Storage Usage',
+                subtitle: 'Calculate storage...',
+                onTap: () => _showComingSoonDialog('Storage Management'),
+              ),
+              _buildSettingsTile(
+                icon: Icons.delete_sweep,
+                title: 'Clear Cache',
+                onTap: () => _showClearCacheDialog(),
+              ),
+            ],
           ),
 
-          const Divider(height: 1),
-
-          // About
-          _buildSectionTitle('About'),
-          _buildSettingsTile(
+          _buildCollapsibleSection(
+            key: 'about',
+            title: 'About',
             icon: Icons.info,
-            title: 'App Version',
-            subtitle: '1.0.0 (MVP)',
-            onTap: () {},
-          ),
-          _buildSettingsTile(
-            icon: Icons.privacy_tip,
-            title: 'Privacy Policy',
-            onTap: () => _showComingSoonDialog('Privacy Policy'),
-          ),
-          _buildSettingsTile(
-            icon: Icons.description,
-            title: 'Terms of Service',
-            onTap: () => _showComingSoonDialog('Terms of Service'),
+            children: [
+              _buildSettingsTile(
+                icon: Icons.info,
+                title: 'App Version',
+                subtitle: '1.0.0 (MVP)',
+                onTap: () {},
+              ),
+              _buildSettingsTile(
+                icon: Icons.privacy_tip,
+                title: 'Privacy Policy',
+                onTap: () => _showComingSoonDialog('Privacy Policy'),
+              ),
+              _buildSettingsTile(
+                icon: Icons.description,
+                title: 'Terms of Service',
+                onTap: () => _showComingSoonDialog('Terms of Service'),
+              ),
+            ],
           ),
 
           const SizedBox(height: 16),
@@ -271,6 +338,20 @@ class _SettingsScreenState extends State<SettingsScreen> with ErrorHandlerMixin 
           color: Theme.of(context).colorScheme.primary,
         ),
       ),
+    );
+  }
+
+  Widget _buildCollapsibleSection({
+    required String key,
+    required String title,
+    required IconData icon,
+    required List<Widget> children,
+  }) {
+    return ExpansionTile(
+      key: Key(key),
+      leading: Icon(icon),
+      title: Text(title),
+      children: children,
     );
   }
 

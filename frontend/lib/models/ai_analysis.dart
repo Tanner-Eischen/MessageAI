@@ -10,10 +10,11 @@ class AIAnalysis {
   final int analysisTimestamp;
   
   // ✅ NEW ENHANCED FIELDS
-  final String? intensity;
+  final int? intensity;
   final List<String>? secondaryTones;
   final Map<String, dynamic>? contextFlags;
   final Map<String, dynamic>? anxietyAssessment;
+  final BoundaryAnalysis? boundaryAnalysis;
   
   // ✅ PHASE 1: Smart Message Interpreter fields
   final List<RSDTrigger>? rsdTriggers;
@@ -33,6 +34,7 @@ class AIAnalysis {
     this.secondaryTones,
     this.contextFlags,
     this.anxietyAssessment,
+    this.boundaryAnalysis,
     // ✅ PHASE 1
     this.rsdTriggers,
     this.alternativeInterpretations,
@@ -55,31 +57,77 @@ class AIAnalysis {
         );
       }
       
+      // Helper function to safely parse numbers
+      num? parseNum(dynamic value) {
+        if (value == null) return null;
+        if (value is num) return value;
+        if (value is String) return num.tryParse(value);
+        return null;
+      }
+      
+      // 🔧 Helper to parse JSONB arrays from Supabase
+      List<String>? _parseJsonbArray(dynamic value) {
+        if (value == null) return null;
+        if (value is List) {
+          // Already a list
+          return value.map((e) => e.toString()).toList();
+        }
+        // If it's not a list, return null (shouldn't happen with our JSONB setup)
+        return null;
+      }
+      
       return AIAnalysis(
         id: id,
         messageId: messageId,
         tone: tone,
         urgencyLevel: json['urgency_level'] as String?,
         intent: json['intent'] as String?,
-        confidenceScore: (json['confidence_score'] as num?)?.toDouble(),
-        analysisTimestamp: (json['analysis_timestamp'] as num?)?.toInt() ?? 
+        confidenceScore: parseNum(json['confidence_score'])?.toDouble(),
+        analysisTimestamp: parseNum(json['analysis_timestamp'])?.toInt() ?? 
                            DateTime.now().millisecondsSinceEpoch ~/ 1000,
         // ✅ Parse new fields
-        intensity: json['intensity'] as String?,
-        secondaryTones: (json['secondary_tones'] as List<dynamic>?)
-            ?.map((e) => e as String)
-            .toList(),
+        // 🔧 FIXED: intensity is TEXT in database, not INT
+        intensity: null, // intensity field is now TEXT in DB (very_low, low, medium, high, very_high)
+        // 🔧 FIXED: secondaryTones is JSONB array in database
+        secondaryTones: _parseJsonbArray(json['secondary_tones']),
         contextFlags: json['context_flags'] as Map<String, dynamic>?,
         anxietyAssessment: json['anxiety_assessment'] as Map<String, dynamic>?,
-        // ✅ PHASE 1: Parse RSD, interpretations, evidence
+        boundaryAnalysis: json['boundary_analysis'] != null
+            ? BoundaryAnalysis.fromJson(json['boundary_analysis'] as Map<String, dynamic>)
+            : null,
+        // ✅ PHASE 1: Parse RSD, interpretations, evidence (with error handling)
         rsdTriggers: (json['rsd_triggers'] as List<dynamic>?)
-            ?.map((e) => RSDTrigger.fromJson(e as Map<String, dynamic>))
+            ?.map((e) {
+              try {
+                return RSDTrigger.fromJson(e as Map<String, dynamic>);
+              } catch (err) {
+                print('⚠️ Failed to parse RSD trigger: $err');
+                return null;
+              }
+            })
+            .whereType<RSDTrigger>()
             .toList(),
         alternativeInterpretations: (json['alternative_interpretations'] as List<dynamic>?)
-            ?.map((e) => MessageInterpretation.fromJson(e as Map<String, dynamic>))
+            ?.map((e) {
+              try {
+                return MessageInterpretation.fromJson(e as Map<String, dynamic>);
+              } catch (err) {
+                print('⚠️ Failed to parse interpretation: $err');
+                return null;
+              }
+            })
+            .whereType<MessageInterpretation>()
             .toList(),
         evidence: (json['evidence'] as List<dynamic>?)
-            ?.map((e) => Evidence.fromJson(e as Map<String, dynamic>))
+            ?.map((e) {
+              try {
+                return Evidence.fromJson(e);
+              } catch (err) {
+                print('⚠️ Failed to parse evidence: $err');
+                return null;
+              }
+            })
+            .whereType<Evidence>()
             .toList(),
       );
     } catch (e) {
@@ -102,6 +150,7 @@ class AIAnalysis {
       if (secondaryTones != null) 'secondary_tones': secondaryTones,
       if (contextFlags != null) 'context_flags': contextFlags,
       if (anxietyAssessment != null) 'anxiety_assessment': anxietyAssessment,
+      if (boundaryAnalysis != null) 'boundary_analysis': boundaryAnalysis!.toJson(),
       // ✅ PHASE 1 fields
       if (rsdTriggers != null) 'rsd_triggers': rsdTriggers!.map((e) => e.toJson()).toList(),
       if (alternativeInterpretations != null) 'alternative_interpretations': 
@@ -132,6 +181,60 @@ class AIAnalysis {
 // PHASE 1: Smart Message Interpreter - Helper Classes
 // ============================================================================
 
+/// Boundary violation analysis
+class BoundaryAnalysis {
+  final bool hasViolation;
+  final BoundaryViolationType type;
+  final String explanation;
+  final List<String> suggestedResponses;
+  final int severity; // 1 = low, 2 = medium, 3 = high
+  
+  const BoundaryAnalysis({
+    required this.hasViolation,
+    required this.type,
+    required this.explanation,
+    required this.suggestedResponses,
+    required this.severity,
+  });
+  
+  factory BoundaryAnalysis.fromJson(Map<String, dynamic> json) {
+    final typeStr = json['type'] as String? ?? 'none';
+    final typeEnum = BoundaryViolationType.values.firstWhere(
+      (e) => e.toString() == 'BoundaryViolationType.$typeStr',
+      orElse: () => BoundaryViolationType.none,
+    );
+    
+    return BoundaryAnalysis(
+      hasViolation: json['hasViolation'] as bool? ?? false,
+      type: typeEnum,
+      explanation: json['explanation'] as String? ?? '',
+      suggestedResponses: (json['suggestedResponses'] as List<dynamic>?)
+          ?.map((e) => e.toString())
+          .toList() ?? [],
+      severity: (json['severity'] as num?)?.toInt() ?? 1,
+    );
+  }
+  
+  Map<String, dynamic> toJson() {
+    return {
+      'hasViolation': hasViolation,
+      'type': type.toString().split('.').last,
+      'explanation': explanation,
+      'suggestedResponses': suggestedResponses,
+      'severity': severity,
+    };
+  }
+}
+
+enum BoundaryViolationType {
+  none,
+  afterHours,        // Messages outside work hours
+  urgentPressure,    // Pressure language ("need this NOW")
+  guiltTripping,     // Manipulation tactics
+  overstepping,      // Asking too much/too personal
+  repeated,          // Pattern of boundary pushing
+}
+
 /// RSD Trigger model
 class RSDTrigger {
   final String pattern;
@@ -148,10 +251,10 @@ class RSDTrigger {
 
   factory RSDTrigger.fromJson(Map<String, dynamic> json) {
     return RSDTrigger(
-      pattern: json['pattern'] as String,
+      pattern: (json['pattern'] ?? json['trigger']) as String,
       severity: json['severity'] as String,
       explanation: json['explanation'] as String,
-      reassurance: json['reassurance'] as String,
+      reassurance: (json['reassurance'] ?? 'This is a common concern and doesn\'t reflect your worth.') as String,
     );
   }
 
@@ -186,14 +289,38 @@ class MessageInterpretation {
   });
 
   factory MessageInterpretation.fromJson(Map<String, dynamic> json) {
+    // Handle both 'likelihood' as string or int
+    int parsedLikelihood;
+    final likelihoodValue = json['likelihood'];
+    if (likelihoodValue is int) {
+      parsedLikelihood = likelihoodValue;
+    } else if (likelihoodValue is String) {
+      // Map text likelihood to percentage
+      switch (likelihoodValue.toLowerCase()) {
+        case 'high':
+          parsedLikelihood = 80;
+          break;
+        case 'medium':
+          parsedLikelihood = 50;
+          break;
+        case 'low':
+          parsedLikelihood = 20;
+          break;
+        default:
+          parsedLikelihood = 50;
+      }
+    } else {
+      parsedLikelihood = 50;
+    }
+    
     return MessageInterpretation(
       interpretation: json['interpretation'] as String,
-      tone: json['tone'] as String,
-      likelihood: json['likelihood'] as int,
-      reasoning: json['reasoning'] as String,
-      contextClues: (json['context_clues'] as List<dynamic>)
-          .map((e) => e as String)
-          .toList(),
+      tone: (json['tone'] ?? 'neutral') as String,
+      likelihood: parsedLikelihood,
+      reasoning: (json['reasoning'] ?? json['explanation'] ?? '') as String,
+      contextClues: (json['context_clues'] as List<dynamic>?)
+          ?.map((e) => e as String)
+          .toList() ?? [],
     );
   }
 
@@ -226,12 +353,23 @@ class Evidence {
     required this.reasoning,
   });
 
-  factory Evidence.fromJson(Map<String, dynamic> json) {
+  factory Evidence.fromJson(dynamic json) {
+    // Handle evidence as either object or simple string
+    if (json is String) {
+      return Evidence(
+        type: 'keyword',
+        quote: json,
+        supports: 'tone',
+        reasoning: 'Key phrase in message',
+      );
+    }
+    
+    final jsonMap = json as Map<String, dynamic>;
     return Evidence(
-      type: json['type'] as String,
-      quote: json['quote'] as String,
-      supports: json['supports'] as String,
-      reasoning: json['reasoning'] as String,
+      type: (jsonMap['type'] ?? 'keyword') as String,
+      quote: (jsonMap['quote'] ?? jsonMap.toString()) as String,
+      supports: (jsonMap['supports'] ?? 'tone') as String,
+      reasoning: (jsonMap['reasoning'] ?? '') as String,
     );
   }
 

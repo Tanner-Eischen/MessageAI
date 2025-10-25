@@ -2,6 +2,12 @@
  * Central export for all response templates
  */
 
+import { DECLINING_TEMPLATES } from './declining-templates.ts';
+import { BOUNDARY_TEMPLATES } from './boundary-templates.ts';
+import { INFO_DUMP_TEMPLATES } from './info-dump-templates.ts';
+import { APOLOGIZING_TEMPLATES } from './apologizing-templates.ts';
+import { CLARIFYING_TEMPLATES } from './clarifying-templates.ts';
+
 export type { ResponseTemplate } from './declining-templates.ts';
 export { DECLINING_TEMPLATES } from './declining-templates.ts';
 export { BOUNDARY_TEMPLATES } from './boundary-templates.ts';

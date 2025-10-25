@@ -21,6 +21,7 @@ class ToneBadge extends StatelessWidget {
     
     final toneInfo = _getToneInfo(analysis.tone);
     final urgencyColor = _getUrgencyColor(analysis.urgencyLevel);
+    final hasBoundary = analysis.boundaryAnalysis?.hasViolation == true;
 
     return GestureDetector(
       onTap: onTap,
@@ -34,7 +35,9 @@ class ToneBadge extends StatelessWidget {
               .withOpacity(0.9),
           borderRadius: BorderRadius.circular(AppTheme.radiusS),
           border: Border.all(
-            color: urgencyColor.withOpacity(0.3),
+            color: (hasBoundary 
+                ? _getBoundaryColor(analysis.boundaryAnalysis!.severity)
+                : urgencyColor).withOpacity(0.3),
             width: 1,
           ),
         ),
@@ -54,6 +57,18 @@ class ToneBadge extends StatelessWidget {
                 color: isDark ? AppTheme.white : AppTheme.black,
               ),
             ),
+            // 🆕 PHASE 1: Boundary violation indicator
+            if (hasBoundary) ...[
+              const SizedBox(width: AppTheme.spacingXXS),
+              Container(
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(
+                  color: _getBoundaryColor(analysis.boundaryAnalysis!.severity),
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ],
             // ✅ NEW: Show intensity dot
             if (analysis.intensity != null) ...[
               const SizedBox(width: AppTheme.spacingXXS),
@@ -67,7 +82,7 @@ class ToneBadge extends StatelessWidget {
               ),
             ],
             // Existing urgency dot
-            if (analysis.urgencyLevel != null && analysis.urgencyLevel != 'Low') ...[
+            if (analysis.urgencyLevel != null && analysis.urgencyLevel != 'Low' && !hasBoundary) ...[
               const SizedBox(width: AppTheme.spacingXXS),
               Container(
                 width: 6,
@@ -158,20 +173,31 @@ class ToneBadge extends StatelessWidget {
   }
 
   // ✅ NEW: Helper for intensity colors
-  Color _getIntensityColor(String intensity) {
-    switch (intensity.toLowerCase()) {
-      case 'very_high':
-        return Colors.red;
-      case 'high':
-        return Colors.orange;
-      case 'medium':
-        return Colors.blue;
-      case 'low':
-        return Colors.green;
-      case 'very_low':
-        return Colors.grey;
+  Color _getIntensityColor(int intensity) {
+    // Map intensity (1-10) to colors
+    if (intensity >= 8) {
+      return Colors.red;
+    } else if (intensity >= 6) {
+      return Colors.orange;
+    } else if (intensity >= 4) {
+      return Colors.blue;
+    } else if (intensity >= 2) {
+      return Colors.green;
+    } else {
+      return Colors.grey;
+    }
+  }
+
+  // ✅ NEW: Helper for boundary colors
+  Color _getBoundaryColor(int severity) {
+    switch (severity) {
+      case 3:
+        return AppTheme.accentRed;
+      case 2:
+        return AppTheme.accentOrange;
+      case 1:
       default:
-        return Colors.grey;
+        return AppTheme.accentBlue;
     }
   }
 }

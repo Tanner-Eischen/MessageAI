@@ -1,6 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { OpenAIClient } from '../_shared/openai-client.ts';
+import { createOpenAIClient } from '../_shared/openai-client.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -37,35 +37,9 @@ serve(async (req) => {
 
     console.log(`📋 Loading context for conversation ${conversation_id}, user ${user.id}`);
 
-    // Check cache first
-    const { data: cachedContextArray } = await supabase.rpc('get_conversation_context', {
-      p_user_id: user.id,
-      p_conversation_id: conversation_id,
-    });
-
-    if (cachedContextArray && cachedContextArray.length > 0) {
-      const cache = cachedContextArray[0];
-      // If cache is less than 1 hour old, return it
-      if (cache.cache_age < 3600) {
-        console.log('✅ Returning cached context');
-        return new Response(
-          JSON.stringify({
-            success: true,
-            context: {
-              last_discussed: cache.last_discussed,
-              key_points: cache.key_points,
-              pending_questions: cache.pending_questions,
-            },
-            from_cache: true,
-            cache_age: cache.cache_age,
-          }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-    }
-
-    // Generate fresh context
-    console.log('🔄 Generating fresh context');
+    // 🔧 FIXED: Skip RPC cache check and generate context directly
+    // This avoids the 400 error from missing RPC functions
+    console.log('🔄 Generating fresh context (skipping cache)');
 
     // Get recent messages
     const { data: recentMessages } = await supabase
@@ -82,7 +56,7 @@ serve(async (req) => {
     console.log(`Found ${recentMessages.length} recent messages`);
 
     // Use AI to extract context
-    const openai = new OpenAIClient();
+    const openai = createOpenAIClient();
     
     const prompt = `Analyze these recent messages and extract:
 1. What was last discussed (1 sentence)
@@ -120,28 +94,9 @@ ${recentMessages.map((m, i) => `${i + 1}. ${m.body}`).join('\n')}
 
     console.log('✅ Context generated');
 
-    // Cache the result
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + 3600 * 1000); // 1 hour
-
-    const { error: cacheError } = await supabase
-      .from('conversation_context_cache')
-      .upsert({
-        user_id: user.id,
-        conversation_id: conversation_id,
-        last_discussed: context.last_discussed,
-        key_points: context.key_points,
-        pending_questions: context.pending_questions,
-        generated_at: now.toISOString(),
-        expires_at: expiresAt.toISOString(),
-      }, {
-        onConflict: 'user_id,conversation_id',
-      });
-
-    if (cacheError) {
-      console.error('Error caching context:', cacheError);
-    }
-
+    // 🔧 TODO: Cache storage skipped for now (table may not exist yet)
+    // TODO: Implement caching in future version
+    
     return new Response(
       JSON.stringify({
         success: true,

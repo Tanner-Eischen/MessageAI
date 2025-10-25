@@ -64,6 +64,9 @@ class ContextPreloaderService {
           throw Exception(data['error'] ?? 'Failed to load context');
         }
       } else {
+        // Log more details for 400+ errors
+        print('❌ Context preloader error: HTTP ${response.statusCode}');
+        print('   Response body: ${response.body}');
         throw Exception('HTTP ${response.statusCode}: ${response.body}');
       }
     } catch (e) {
