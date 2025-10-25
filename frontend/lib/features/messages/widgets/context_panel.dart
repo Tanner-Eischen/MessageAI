@@ -19,7 +19,7 @@ class ContextPanel extends StatefulWidget {
 }
 
 class _ContextPanelState extends State<ContextPanel> {
-  bool _isExpanded = true;
+  bool _isExpanded = false;
   
   @override
   Widget build(BuildContext context) {

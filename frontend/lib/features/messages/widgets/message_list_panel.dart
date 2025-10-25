@@ -471,37 +471,54 @@ class MessageListPanel extends ConsumerWidget {
       child: SafeArea(
         top: false,
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // ✅ PHASE 2: Draft Feedback Panel
-            Consumer(
-              builder: (context, ref, child) {
-                final draftAnalysis = ref.watch(draftAnalysisProvider);
-                
-                return draftAnalysis.when(
-                  data: (analysis) {
-                    if (analysis == null) return const SizedBox.shrink();
-                    
-                    return DraftFeedbackPanel(
-                      analysis: analysis,
-                      draftMessage: messageController.text,
-                      onApplySuggestion: (suggestion) {
-                        messageController.text = suggestion;
-                      },
-                      onTemplateSelected: (template) {
-                        messageController.text = template;
-                      },
-                      onClose: () {
-                        ref.read(draftAnalysisProvider.notifier).clear();
-                      },
-                    );
-                  },
-                  loading: () => const LinearProgressIndicator(
-                    backgroundColor: Colors.transparent,
-                  ),
-                  error: (_, __) => const SizedBox.shrink(),
-                );
-              },
-            ),
+            // ✅ PHASE 2: Draft Feedback Panel (constrained height, scrollable internally)
+             Consumer(
+               builder: (context, ref, child) {
+                 final draftAnalysis = ref.watch(draftAnalysisProvider);
+                 
+                 return draftAnalysis.when(
+                   data: (analysis) {
+                     if (analysis == null) return const SizedBox.shrink();
+                     
+                     return ConstrainedBox(
+                       constraints: BoxConstraints(
+                         maxHeight: MediaQuery.of(context).size.height * 0.3,
+                       ),
+                       child: SingleChildScrollView(
+                         child: Column(
+                           mainAxisSize: MainAxisSize.min,
+                           children: [
+                             DraftFeedbackPanel(
+                               analysis: analysis,
+                               draftMessage: messageController.text,
+                               onApplySuggestion: (suggestion) {
+                                 messageController.text = suggestion;
+                               },
+                               onTemplateSelected: (template) {
+                                 messageController.text = template;
+                               },
+                               onClose: () {
+                                 ref.read(draftAnalysisProvider.notifier).clear();
+                               },
+                             ),
+                             const SizedBox(height: AppTheme.spacingS),
+                           ],
+                         ),
+                       ),
+                     );
+                   },
+                   loading: () => Padding(
+                     padding: const EdgeInsets.symmetric(vertical: AppTheme.spacingS),
+                     child: const LinearProgressIndicator(
+                       backgroundColor: Colors.transparent,
+                     ),
+                   ),
+                   error: (_, __) => const SizedBox.shrink(),
+                 );
+               },
+             ),
             
             // Show selected image preview
             if (selectedImage != null) ...[
@@ -542,7 +559,7 @@ class MessageListPanel extends ConsumerWidget {
               ),
             ],
             
-            // Input row
+            // Input row (always at bottom)
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
@@ -611,7 +628,7 @@ class MessageListPanel extends ConsumerWidget {
                         Icons.auto_awesome,
                         color: !hasText
                             ? (isDark ? AppTheme.gray600 : AppTheme.gray400)
-                            : Colors.blue, // Blue - Adaptive Response Assistant feature
+                            : Colors.blue,
                       ),
                       tooltip: 'Check message confidence',
                       padding: const EdgeInsets.all(AppTheme.spacingS),

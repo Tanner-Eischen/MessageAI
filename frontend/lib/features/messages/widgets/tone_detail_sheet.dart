@@ -32,21 +32,42 @@ class ToneDetailSheet extends ConsumerStatefulWidget {
     String messageBody,
     String messageId,
   ) {
+    print('📋 Showing ToneDetailSheet modal');
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
+      barrierColor: Colors.black54,
       builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.9,
+        initialChildSize: 0.85,
         minChildSize: 0.5,
         maxChildSize: 0.95,
-        builder: (context, scrollController) => SingleChildScrollView(
-          controller: scrollController,
-          child: ToneDetailSheet(
-            analysis: analysis,
-            messageBody: messageBody,
-            messageId: messageId,
-          ),
+        expand: false,
+        snap: true,
+        snapSizes: const [0.5, 0.85, 0.95],
+        builder: (context, scrollController) => Consumer(
+          builder: (context, ref, child) {
+            print('✅ ToneDetailSheet rendered with Consumer');
+            return Container(
+              decoration: BoxDecoration(
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? const Color(0xFF1E1E1E)
+                    : Colors.white,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(20),
+                  topRight: Radius.circular(20),
+                ),
+              ),
+              child: SingleChildScrollView(
+                controller: scrollController,
+                child: ToneDetailSheet(
+                  analysis: analysis,
+                  messageBody: messageBody,
+                  messageId: messageId,
+                ),
+              ),
+            );
+          },
         ),
       ),
     );
