@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:messageai/core/env.dart';
+import 'package:flutter/foundation.dart';
 
 /// Singleton Supabase client for the application.
 /// 
@@ -20,6 +21,8 @@ class SupabaseClientProvider {
     _instance = await Supabase.initialize(
       url: Env.supabaseUrl,
       anonKey: Env.supabaseAnonKey,
+      // Use implicit flow on web to avoid secure storage requirement
+      authFlowType: kIsWeb ? AuthFlowType.implicit : AuthFlowType.pkce,
       // Enable realtime
       // Note: The underlying realtime_client has heartbeat enabled by default (30s)
       realtimeClientOptions: const RealtimeClientOptions(

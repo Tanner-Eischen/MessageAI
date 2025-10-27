@@ -20,9 +20,7 @@ import 'package:flutter/foundation.dart'
 /// ```
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
-    if (kIsWeb) {
-      return web;
-    }
+    // Web override disabled - use platform-specific options for all platforms
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
         return android;

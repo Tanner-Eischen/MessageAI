@@ -25,6 +25,8 @@ class RealTimeMessageService {
   final Map<String, RealtimeChannel> _receiptChannels = {};
   final Map<String, StreamController<List<Message>>> _messageControllers = {};
   final Map<String, StreamController<List<Receipt>>> _receiptControllers = {};
+  final Map<String, int> _reconnectAttempts = {};  // Track reconnection attempts
+  final Map<String, Timer?> _reconnectTimers = {};  // Track reconnection timers
 
   /// Subscribe to real-time messages for a conversation
   Stream<List<Message>> subscribeToMessages(String conversationId) {
@@ -62,7 +64,9 @@ class RealTimeMessageService {
         ),
         (payload, [ref]) async {
           _diagnostics.recordMessageReceived(channelName);
-          print('📨 Realtime message received');
+          print('📨 ✅ REALTIME MESSAGE RECEIVED!');
+          print('   Conversation: $conversationId');
+          print('   Payload: $payload');
           
           try {
             final data = payload['new'] as Map<String, dynamic>;
@@ -83,7 +87,9 @@ class RealTimeMessageService {
               isSynced: true,
             );
             
+            print('   📝 Message: ${message.body.length > 30 ? message.body.substring(0, 30) : message.body}...');
             await _db.messageDao.upsertMessage(message);
+            print('   💾 Saved to DB');
             
             // Refresh the stream
             final messages =
@@ -95,10 +101,13 @@ class RealTimeMessageService {
             final currentUser = _supabase.auth.currentUser;
             if (currentUser != null && message.senderId != currentUser.id) {
               await _createReceipt(message.id, currentUser.id, 'delivered');
-              
-              // Trigger AI analysis for received messages (non-blocking)
-              _triggerAIAnalysis(message);
             }
+            
+            // Trigger AI analysis for received messages (non-blocking)
+            _triggerAIAnalysis(message);
+            
+            // Reset reconnection attempts on successful message
+            _reconnectAttempts[channelName] = 0;
           } catch (e) {
             print('❌ Error processing message: $e');
           }
@@ -119,6 +128,12 @@ class RealTimeMessageService {
               _diagnostics.recordError(channelName, err.toString());
               controller.addError(err);
             }
+            // Attempt to reconnect with exponential backoff
+            _scheduleReconnect(conversationId, isReceipt: false);
+          } else if (status == 'SUBSCRIBED') {
+            // Reset reconnection attempts on successful subscription
+            _reconnectAttempts[channelName] = 0;
+            print('✅ Channel $channelName successfully subscribed');
           }
         },
         const Duration(seconds: 30), // Increased timeout for mobile networks
@@ -147,10 +162,10 @@ class RealTimeMessageService {
     // Run in background, don't await
     _aiAnalysis.requestAnalysis(message.id, message.body).then((analysis) {
       if (analysis != null) {
-        print('✨ AI analysis completed for ${message.id.substring(0, 8)}: ${analysis.tone}');
+        print('✨ AI analysis completed for ${message.id.length > 8 ? message.id.substring(0, 8) : message.id}: ${analysis.tone}');
       }
     }).catchError((error) {
-      print('⚠️ AI analysis failed for ${message.id.substring(0, 8)}: $error');
+      print('⚠️ AI analysis failed for ${message.id.length > 8 ? message.id.substring(0, 8) : message.id}: $error');
     });
   }
 
@@ -206,6 +221,9 @@ class RealTimeMessageService {
       final channelName = 'receipts:$conversationId';
       final channel = _supabase.realtime.channel(channelName);
       
+      // Register channel for diagnostics
+      _diagnostics.registerChannel(channelName, channel);
+      
       // Listen for receipt changes
       channel.on(
         RealtimeListenTypes.postgresChanges,
@@ -215,12 +233,16 @@ class RealTimeMessageService {
           table: 'message_receipts',
         ),
         (payload, [ref]) async {
+          _diagnostics.recordMessageReceived(channelName);
           print('📨 Receipt change received');
           
           try {
             // Reload all receipts for this conversation
             final receipts = await _db.receiptDao.getReceiptsByConversation(conversationId);
             controller.add(receipts);
+            
+            // Reset reconnection attempts on successful receipt
+            _reconnectAttempts[channelName] = 0;
           } catch (e) {
             print('❌ Error processing receipt: $e');
           }
@@ -229,9 +251,21 @@ class RealTimeMessageService {
 
       channel.subscribe(
         (status, [err]) {
+          _diagnostics.updateChannelStatus(channelName, status);
           print('📡 Receipts [$conversationId]: $status');
-          if (err != null) {
-            controller.addError(err);
+          
+          if (status == 'CHANNEL_ERROR' || status == 'TIMED_OUT' || err != null) {
+            print('❌ Receipt channel error for $conversationId: $status ${err ?? ""}');
+            if (err != null) {
+              _diagnostics.recordError(channelName, err.toString());
+              controller.addError(err);
+            }
+            // Attempt to reconnect with exponential backoff
+            _scheduleReconnect(conversationId, isReceipt: true);
+          } else if (status == 'SUBSCRIBED') {
+            // Reset reconnection attempts on successful subscription
+            _reconnectAttempts[channelName] = 0;
+            print('✅ Receipt channel $channelName successfully subscribed');
           }
         },
         const Duration(seconds: 30),
@@ -252,6 +286,51 @@ class RealTimeMessageService {
       print('Error setting up receipt listener: $e');
       controller.addError(e);
     }
+  }
+
+  /// Schedule automatic reconnection with exponential backoff
+  void _scheduleReconnect(String conversationId, {required bool isReceipt}) {
+    final channelName = isReceipt ? 'receipts:$conversationId' : 'messages:$conversationId';
+    
+    // Cancel existing reconnect timer if any
+    _reconnectTimers[channelName]?.cancel();
+    
+    // Get current attempt count
+    int attempts = _reconnectAttempts[channelName] ?? 0;
+    
+    // Don't retry more than 5 times
+    if (attempts >= 5) {
+      print('⚠️  Max reconnection attempts reached for $channelName');
+      return;
+    }
+    
+    // Calculate exponential backoff: 1s, 2s, 4s, 8s, 16s
+    final delaySeconds = 1 << attempts;  // 2^attempts
+    _reconnectAttempts[channelName] = attempts + 1;
+    
+    print('🔄 Scheduling reconnect for $channelName (attempt ${attempts + 1}/5) in ${delaySeconds}s...');
+    
+    _reconnectTimers[channelName] = Timer(Duration(seconds: delaySeconds), () {
+      print('🔌 Attempting to reconnect: $channelName');
+      
+      if (isReceipt) {
+        // Unsubscribe and recreate receipt channel
+        _unsubscribeFromReceiptsSilent(conversationId).then((_) {
+          if (_receiptControllers.containsKey(conversationId)) {
+            final controller = _receiptControllers[conversationId]!;
+            _setupReceiptListener(conversationId, controller);
+          }
+        });
+      } else {
+        // Unsubscribe and recreate message channel
+        _unsubscribeFromMessagesSilent(conversationId).then((_) {
+          if (_messageControllers.containsKey(conversationId)) {
+            final controller = _messageControllers[conversationId]!;
+            _setupRealtimeListener(conversationId, controller);
+          }
+        });
+      }
+    });
   }
 
   /// Unsubscribe from real-time messages
@@ -284,8 +363,39 @@ class RealTimeMessageService {
     }
   }
 
+  /// Unsubscribe without throwing errors (for reconnection)
+  Future<void> _unsubscribeFromMessagesSilent(String conversationId) async {
+    final channel = _channels.remove(conversationId);
+    if (channel != null) {
+      try {
+        await channel.unsubscribe();
+      } catch (e) {
+        // Ignore unsubscribe errors
+      }
+    }
+  }
+
+  /// Unsubscribe receipt channel without throwing errors (for reconnection)
+  Future<void> _unsubscribeFromReceiptsSilent(String conversationId) async {
+    final channel = _receiptChannels.remove(conversationId);
+    if (channel != null) {
+      try {
+        await channel.unsubscribe();
+      } catch (e) {
+        // Ignore unsubscribe errors
+      }
+    }
+  }
+
   /// Clean up all subscriptions
   Future<void> dispose() async {
+    // Cancel all reconnect timers
+    for (final timer in _reconnectTimers.values) {
+      timer?.cancel();
+    }
+    _reconnectTimers.clear();
+    _reconnectAttempts.clear();
+    
     for (final controller in _messageControllers.values) {
       controller.close();
     }

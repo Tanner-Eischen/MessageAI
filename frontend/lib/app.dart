@@ -6,14 +6,14 @@ import 'package:messageai/features/messages/screens/message_screen.dart';
 import 'package:messageai/state/providers.dart';
 import 'package:messageai/services/device_registration_service.dart';
 import 'package:messageai/core/theme/app_theme.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
+// import 'package:firebase_messaging/firebase_messaging.dart';
 
 /// Global navigator key for deep linking and navigation from notifications
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 /// Main application widget with lifecycle monitoring
 class MessageAIApp extends ConsumerStatefulWidget {
-  const MessageAIApp({Key? key}) : super(key: key);
+  const MessageAIApp({super.key});
 
   @override
   ConsumerState<MessageAIApp> createState() => _MessageAIAppState();
@@ -47,13 +47,13 @@ class _MessageAIAppState extends ConsumerState<MessageAIApp> with WidgetsBinding
   Future<void> _updateLastSeen() async {
     try {
       print('⏰ Updating device last_seen...');
-      final token = await FirebaseMessaging.instance.getToken();
-      if (token != null) {
-        await _deviceRegistration.updateDeviceLastSeen(token);
-        print('✅ Device last_seen updated');
-      } else {
-        print('⚠️ No FCM token available');
-      }
+      // final token = await FirebaseMessaging.instance.getToken();
+      // if (token != null) {
+      //   await _deviceRegistration.updateDeviceLastSeen(token);
+      //   print('✅ Device last_seen updated');
+      // } else {
+      //   print('⚠️ No FCM token available');
+      // }
     } catch (e) {
       print('❌ Failed to update last_seen: $e');
     }
@@ -98,7 +98,7 @@ class _MessageAIAppState extends ConsumerState<MessageAIApp> with WidgetsBinding
 
 /// Widget that routes between auth and main screens based on session
 class AuthGate extends ConsumerWidget {
-  const AuthGate({Key? key}) : super(key: key);
+  const AuthGate({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

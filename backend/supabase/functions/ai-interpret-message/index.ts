@@ -70,21 +70,15 @@ serve(async (req) => {
         .from('message_ai_analysis')
         .upsert({
           message_id,
-          // Core fields
+          // Core fields (Features 1-3)
           tone: validatedResult.tone,
           urgency_level: validatedResult.urgency_level,
           intent: validatedResult.intent,
           confidence_score: validatedResult.confidence_score,
-          // Enhanced fields
-          intensity: validatedResult.intensity,
-          context_flags: validatedResult.context_flags,
-          secondary_tones: validatedResult.secondary_tones,
-          anxiety_assessment: validatedResult.response_anxiety_assessment,
-          // Phase 1: Smart Message Interpreter fields
+          // Features 1-3: Smart Message Interpreter fields
           rsd_triggers: validatedResult.rsd_triggers,
           alternative_interpretations: validatedResult.message_interpretations,
           evidence: validatedResult.evidence,
-          figurative_language_detected: validatedResult.figurative_language_detected,
           // Metadata
           analysis_timestamp: now,
           updated_at: now,

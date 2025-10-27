@@ -1,5 +1,6 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 /// Local notification service for displaying notifications in foreground
 class LocalNotificationService {
@@ -14,6 +15,10 @@ class LocalNotificationService {
   /// Initialize local notifications
   Future<void> initialize() async {
     try {
+      if (kIsWeb) {
+        print('ℹ️ Local notifications not supported on web. Skipping initialization.');
+        return;
+      }
       // Android initialization
       const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
 
@@ -44,6 +49,10 @@ class LocalNotificationService {
     String? payload,
   }) async {
     try {
+      if (kIsWeb) {
+        print('ℹ️ Local notifications not supported on web. Skipping showNotification.');
+        return;
+      }
       // Android notification details
       const androidDetails = AndroidNotificationDetails(
         _channelId,
@@ -102,6 +111,7 @@ class LocalNotificationService {
   /// Cancel a notification
   Future<void> cancelNotification(int id) async {
     try {
+      if (kIsWeb) return;
       await _plugin.cancel(id);
     } catch (e) {
       print('Error canceling notification: $e');
@@ -111,6 +121,7 @@ class LocalNotificationService {
   /// Cancel all notifications
   Future<void> cancelAllNotifications() async {
     try {
+      if (kIsWeb) return;
       await _plugin.cancelAll();
     } catch (e) {
       print('Error canceling all notifications: $e');
@@ -120,6 +131,7 @@ class LocalNotificationService {
   /// Get pending notifications
   Future<List<PendingNotificationRequest>> getPendingNotifications() async {
     try {
+      if (kIsWeb) return [];
       return await _plugin.pendingNotificationRequests();
     } catch (e) {
       print('Error getting pending notifications: $e');
@@ -131,6 +143,7 @@ class LocalNotificationService {
   void setupNotificationResponseHandler({
     required Function(String) onNotificationTapped,
   }) {
+    if (kIsWeb) return;
     _plugin.getNotificationAppLaunchDetails().then((details) {
       if (details?.didNotificationLaunchApp ?? false) {
         final payload = details?.notificationResponse?.payload;
@@ -140,7 +153,8 @@ class LocalNotificationService {
       }
     });
 
-    // Listen for notification taps in foreground
+    // Note: onDidReceiveNotificationResponse is not available in this version
+    // Notification tap handling is done through the initialization callback
   }
 
   /// Request notification permissions (Android 13+)

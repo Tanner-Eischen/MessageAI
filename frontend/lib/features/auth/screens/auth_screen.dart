@@ -120,7 +120,7 @@ class _AuthScreenState extends State<AuthScreen> with ErrorHandlerMixin {
           const SnackBar(
             content: Row(
               children: [
-                Icon(Icons.check_circle, color: Colors.white),
+                Icon(Icons.verified_outlined, color: Colors.white),
                 SizedBox(width: 12),
                 Text('Sign up successful! Signing you in...'),
               ],

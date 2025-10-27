@@ -120,7 +120,7 @@ class AIAnalysisService {
   ) async {
     try {
       final response = await _supabase.functions.invoke(
-        'ai_analyze_tone', // 🔧 FIXED: Added missing function name
+        'ai_analyze_tone', // Function directory name (matches backend)
         body: {
           'message_id': messageId,
           'message_body': messageBody,

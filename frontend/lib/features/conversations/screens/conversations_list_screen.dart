@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:messageai/services/conversation_service.dart';
-import 'package:messageai/services/conversation_filter_service.dart';
 import 'package:messageai/models/conversation_filter.dart';
-import 'package:messageai/models/conversation_with_metadata.dart';
 import 'package:messageai/features/conversations/widgets/conversation_filter_chips.dart';
+import 'package:messageai/features/conversations/widgets/create_conversation_dialog.dart';
 import 'package:messageai/data/drift/app_db.dart';
 import 'package:messageai/features/messages/screens/message_screen.dart';
 import 'package:messageai/features/settings/screens/settings_screen.dart';
@@ -12,7 +11,7 @@ import 'package:messageai/widgets/user_avatar.dart';
 
 /// Screen showing list of conversations
 class ConversationsListScreen extends StatefulWidget {
-  const ConversationsListScreen({Key? key}) : super(key: key);
+  const ConversationsListScreen({super.key});
 
   @override
   State<ConversationsListScreen> createState() =>
@@ -21,9 +20,8 @@ class ConversationsListScreen extends StatefulWidget {
 
 class _ConversationsListScreenState extends State<ConversationsListScreen> {
   final _conversationService = ConversationService();
-  final _filterService = ConversationFilterService();
   late Future<List<Conversation>> _conversationsFuture;
-  Set<ConversationFilter> _activeFilters = {};
+  final Set<ConversationFilter> _activeFilters = {};
   Map<ConversationFilter, int>? _filterCounts;
 
   @override
@@ -43,108 +41,38 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
   /// Update filter badge counts
   Future<void> _updateFilterCounts() async {
     try {
-      final conversations = await _conversationsFuture;
-      final allMeta = await Future.wait(
-        conversations.map((c) => _filterService.getConversationMetadata(c)),
-      );
-      
-      final counts = await _filterService.getFilterCounts(allMeta);
-      
-      if (mounted) {
-        setState(() {
-          _filterCounts = counts;
-        });
-      }
+      // TODO: Re-implement filter counts for Phase 2+ features
+      // For now, leave empty - these features are being focused on Phase 2
     } catch (e) {
       print('❌ Error updating filter counts: $e');
     }
   }
   
-  /// Handle filter toggle
-  void _handleFilterToggle(ConversationFilter filter) {
+  void _applyFilter(ConversationFilter filter) {
     setState(() {
-      if (filter == ConversationFilter.all) {
-        _activeFilters.clear();
+      if (_activeFilters.contains(filter)) {
+        _activeFilters.remove(filter);
       } else {
-        if (_activeFilters.contains(filter)) {
-          _activeFilters.remove(filter);
-        } else {
-          _activeFilters.add(filter);
-        }
+        _activeFilters.add(filter);
       }
     });
-  }
-  
-  /// Get filtered conversations
-  Future<List<ConversationWithMetadata>> _getFilteredConversations() async {
-    final conversations = await _conversationsFuture;
-    return await _filterService.filterConversations(
-      conversations,
-      _activeFilters,
-    );
+    // TODO: Implement filtering for Phase 2+
+    // Features like smart filters are being added in later phases
   }
 
-  void _showNewConversationDialog() {
-    final titleController = TextEditingController();
-    
-    showDialog(
+  Future<void> _showNewConversationDialog() async {
+    final result = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('New Conversation'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: titleController,
-              decoration: InputDecoration(
-                hintText: 'Conversation title',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              autofocus: true,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              if (titleController.text.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Please enter a title')),
-                );
-                return;
-              }
-
-              try {
-                await _conversationService.createConversation(
-                  title: titleController.text,
-                );
-                if (mounted) {
-                  Navigator.pop(context);
-                  setState(() {
-                    // Don't re-sync from backend (keeps deleted convos deleted)
-                    _conversationsFuture =
-                        _conversationService.getAllConversations(syncFirst: false);
-                  });
-                }
-              } catch (e) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error: $e')),
-                  );
-                }
-              }
-            },
-            child: const Text('Create'),
-          ),
-        ],
-      ),
+      builder: (context) => const CreateConversationDialog(),
     );
+
+    // Refresh conversations list if a conversation was created
+    if (result == true && mounted) {
+      setState(() {
+        _conversationsFuture =
+            _conversationService.getAllConversations(syncFirst: false);
+      });
+    }
   }
 
   @override
@@ -175,7 +103,7 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
           // 🆕 ADD: Filter chips
           ConversationFilterChips(
             activeFilters: _activeFilters,
-            onFilterToggled: _handleFilterToggle,
+            onFilterToggled: _applyFilter,
             badgeCounts: _filterCounts,
           ),
           
@@ -183,8 +111,8 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
           Expanded(
             child: RefreshIndicator(
               onRefresh: _refreshConversations,
-              child: FutureBuilder<List<ConversationWithMetadata>>(
-          future: _getFilteredConversations(),
+              child: FutureBuilder<List<Conversation>>(
+          future: _conversationsFuture, // No longer filtering here
           builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -320,9 +248,7 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
   }
   
   /// 🆕 Build conversation tile with metadata badges
-  Widget _buildConversationTile(ConversationWithMetadata convMeta) {
-    final conv = convMeta.conversation;
-    
+  Widget _buildConversationTile(Conversation conv) {
     return Dismissible(
       key: Key(conv.id),
       direction: DismissDirection.endToStart,
@@ -425,24 +351,7 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
                           ),
                         ),
                         // 🆕 ADD: Priority/status badges
-                        if (convMeta.hasUrgentMessages)
-                          _buildIconBadge(
-                            Icons.priority_high,
-                            Colors.red,
-                            'Urgent',
-                          ),
-                        if (convMeta.hasRSDTriggers)
-                          _buildIconBadge(
-                            Icons.warning_amber,
-                            Colors.orange,
-                            'RSD Trigger',
-                          ),
-                        if (convMeta.hasBoundaryViolations)
-                          _buildIconBadge(
-                            Icons.shield_outlined,
-                            Colors.purple,
-                            'Boundary Issue',
-                          ),
+                        // TODO: Re-implement badges for Phase 2+ features
                       ],
                     ),
                     const SizedBox(height: 4),
@@ -489,24 +398,6 @@ class _ConversationsListScreenState extends State<ConversationsListScreen> {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-  
-  /// 🆕 ADD: Icon badge helper
-  Widget _buildIconBadge(IconData icon, Color color, String tooltip) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 4),
-      child: Tooltip(
-        message: tooltip,
-        child: Container(
-          padding: const EdgeInsets.all(4),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.2),
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: Icon(icon, size: 14, color: color),
         ),
       ),
     );

@@ -187,8 +187,26 @@ class MessageService {
   }
 
   /// Delete message
+  /// Delete message locally only ("Delete for me")
   Future<void> deleteMessage(String id) async {
     await _db.messageDao.deleteMessage(id);
+  }
+  
+  /// Delete message for everyone (from backend + local)
+  Future<void> deleteMessageForEveryone(String id) async {
+    try {
+      // Delete from backend
+      await _supabase
+          .from('messages')
+          .delete()
+          .eq('id', id);
+      
+      // Delete locally
+      await _db.messageDao.deleteMessage(id);
+    } catch (e) {
+      print('Error deleting message for everyone: $e');
+      rethrow;
+    }
   }
 
   /// Get current user ID
