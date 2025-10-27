@@ -2,20 +2,10 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { createOpenAIClient } from "../_shared/openai-client.ts";
 import {
-  ENHANCED_TONE_ANALYSIS_SYSTEM_PROMPT,
-  generateAnalysisPrompt,
-  validateToneAnalysis,
-  extractToneIndicators,
-  detectFigurativeLanguage,
-  assessResponseAnxietyRisk,
-  type ToneAnalysisResult,
+  generateRSDAnalysisPrompt,
+  validateEnhancedAnalysis,
+  type EnhancedToneAnalysisResult,
 } from "../_shared/prompts/enhanced-tone-analysis.ts";
-import {
-  BOUNDARY_ANALYSIS_SYSTEM_PROMPT,
-  generateBoundaryAnalysisPrompt,
-  validateBoundaryAnalysis,
-  type BoundaryAnalysisResult,
-} from "../_shared/prompts/boundary-analysis.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -27,11 +17,7 @@ interface AnalyzeRequest {
   message_id: string;
   message_body: string;
   conversation_context?: string[];
-  // 🆕 PHASE 1: Boundary detection parameters
-  isFromCurrentUser?: boolean;
-  timestamp?: string;
-  includeBoundaryAnalysis?: boolean;
-  skipDatabaseStorage?: boolean; // 🆕 NEW: Skip DB storage for auto-analysis
+  skipDatabaseStorage?: boolean;
 }
 
 serve(async (req) => {
@@ -65,18 +51,18 @@ serve(async (req) => {
 
     // Parse request body
     const requestBody: AnalyzeRequest = await req.json();
-    const { message_id, message_body, conversation_context, includeBoundaryAnalysis, timestamp, skipDatabaseStorage } = requestBody;
+    const { message_id, message_body, conversation_context, skipDatabaseStorage } = requestBody;
 
     if (!message_id || !message_body) {
       throw new Error("message_id and message_body are required");
     }
 
-    console.log(`🔍 Analyzing message ${message_id.substring(0, 8)}...`);
+    console.log(`🧠 RSD Analysis: Message ${message_id.substring(0, 8)}...`);
 
     // Verify user has access to this message
     const { data: message, error: messageError } = await supabase
       .from("messages")
-      .select("id, conversation_id")
+      .select("id, conversation_id, sender_id, created_at")
       .eq("id", message_id)
       .single();
 
@@ -96,86 +82,60 @@ serve(async (req) => {
       throw new Error("Access denied to this conversation");
     }
 
+    // Get sender pattern context if available
+    let senderPatternContext: string | undefined;
+    try {
+      const { data: senderMessages } = await supabase
+        .from("messages")
+        .select("body")
+        .eq("sender_id", message.sender_id)
+        .eq("conversation_id", message.conversation_id)
+        .order("created_at", { ascending: false })
+        .limit(10);
+
+      if (senderMessages && senderMessages.length > 0) {
+        const messageCount = senderMessages.length;
+        const avgLength = Math.round(
+          senderMessages.reduce((sum, m) => sum + (m.body?.length || 0), 0) / messageCount
+        );
+        senderPatternContext = `This sender usually writes ${messageCount > 5 ? 'frequently' : 'occasionally'}, average message length: ${avgLength} characters. Recent communication style: ${senderMessages[0].body?.substring(0, 50)}...`;
+      }
+    } catch (e) {
+      console.warn("⚠️ Could not fetch sender context:", e);
+    }
+
     // Create OpenAI client
     const openai = createOpenAIClient();
 
-    // Extract tone indicators and figurative language
-    const toneIndicators = extractToneIndicators(message_body);
-    const figurativeLanguage = detectFigurativeLanguage(message_body);
-    
-    console.log("🏷️  Tone indicators found:", toneIndicators);
-    console.log("💭 Figurative language:", figurativeLanguage);
-
-    // Generate the analysis prompt
-    const userPrompt = generateAnalysisPrompt(
+    // Generate RSD-focused analysis prompt
+    const userPrompt = generateRSDAnalysisPrompt(
       message_body,
-      conversation_context
+      conversation_context,
+      senderPatternContext
     );
 
-    console.log("📤 Sending request to OpenAI...");
+    console.log("📤 Sending to OpenAI for RSD analysis...");
 
-    // Call OpenAI API with enhanced prompt
-    const analysisResult = await openai.sendMessageForJSON<ToneAnalysisResult>(
+    // Call OpenAI API
+    const analysisResult = await openai.sendMessageForJSON<EnhancedToneAnalysisResult>(
       userPrompt,
-      ENHANCED_TONE_ANALYSIS_SYSTEM_PROMPT
+      "You are an expert in neurodivergent communication. Return ONLY valid JSON, no markdown."
     );
 
-    console.log("📥 Received response from OpenAI");
-    console.log("Analysis result structure:", {
-      tone: analysisResult.tone,
-      urgency_level: analysisResult.urgency_level,
-      intent: analysisResult.intent,
-      confidence_score: analysisResult.confidence_score,
-      intensity: analysisResult.intensity,
-      secondary_tones: analysisResult.secondary_tones?.length || 0,
-      hasContextFlags: !!analysisResult.context_flags,
-    });
+    console.log("📥 Received analysis from OpenAI");
 
     // Validate the result
     console.log("🔍 Validating analysis result...");
-    const validatedResult = validateToneAnalysis(analysisResult);
+    const validatedResult = validateEnhancedAnalysis(analysisResult);
     console.log("✅ Validation successful");
 
-    // Assess response anxiety risk for neurodivergent users
-    const anxietyAssessment = assessResponseAnxietyRisk(validatedResult);
-    console.log("🧠 Anxiety assessment:", anxietyAssessment);
+    console.log(
+      `✅ Analysis complete: ${validatedResult.tone} (${validatedResult.urgencyLevel || 'N/A'})`
+    );
 
-    console.log(`✅ Analysis complete: ${validatedResult.tone} (${validatedResult.urgency_level})`);
-
-    // 🆕 PHASE 1: Analyze for boundary violations (only for incoming messages)
-    let boundaryAnalysis: BoundaryAnalysisResult | null = null;
-    if (includeBoundaryAnalysis) {
-      try {
-        console.log("🚨 Analyzing for boundary violations...");
-        const boundaryPrompt = generateBoundaryAnalysisPrompt(
-          message_body,
-          timestamp
-        );
-
-        const boundaryResult = await openai.sendMessageForJSON<BoundaryAnalysisResult>(
-          boundaryPrompt,
-          BOUNDARY_ANALYSIS_SYSTEM_PROMPT
-        );
-
-        boundaryAnalysis = validateBoundaryAnalysis(boundaryResult);
-        console.log("🛡️ Boundary analysis:", boundaryAnalysis);
-      } catch (boundaryError) {
-        console.warn("⚠️ Boundary analysis failed, continuing:", boundaryError);
-        // Don't fail the entire request if boundary analysis fails
-        boundaryAnalysis = {
-          hasViolation: false,
-          type: "none",
-          explanation: "",
-          suggestedResponses: [],
-          severity: 1,
-        };
-      }
-    }
-
-    // 🆕 CONDITIONAL STORAGE: Only store if not auto-analysis
-    let storedAnalysis: any = null; // 🔧 FIXED: Declare outside conditional
+    // Store analysis if requested
+    let storedAnalysis: any = null;
     if (!skipDatabaseStorage) {
-      // Store the analysis in the database
       const now = Math.floor(Date.now() / 1000);
 
       const { data: insertedData, error: insertError } = await supabase
@@ -183,17 +143,14 @@ serve(async (req) => {
         .insert({
           message_id,
           tone: validatedResult.tone,
-          urgency_level: validatedResult.urgency_level,
+          urgency_level: validatedResult.urgencyLevel,
           intent: validatedResult.intent,
-          confidence_score: validatedResult.confidence_score,
+          confidence_score: validatedResult.confidenceScore,
           analysis_timestamp: now,
-          // ✅ NEW ENHANCED FIELDS
-          intensity: validatedResult.intensity,
-          secondary_tones: validatedResult.secondary_tones,
-          context_flags: validatedResult.context_flags,
-          anxiety_assessment: anxietyAssessment,
-          // 🆕 PHASE 1: Boundary analysis
-          boundary_analysis: boundaryAnalysis,
+          // ✅ Store RSD features
+          rsd_triggers: validatedResult.rsdTriggers || [],
+          alternative_interpretations: validatedResult.alternativeInterpretations || [],
+          evidence: validatedResult.evidence || [],
         })
         .select()
         .single();
@@ -203,7 +160,7 @@ serve(async (req) => {
         throw new Error(`Failed to store analysis: ${insertError.message}`);
       }
 
-      storedAnalysis = insertedData; // 🔧 FIXED: Assign to outer variable
+      storedAnalysis = insertedData;
       console.log("💾 Analysis stored successfully");
     } else {
       console.log("⏭️ Skipping database storage (auto-analysis mode)");
@@ -214,21 +171,17 @@ serve(async (req) => {
       JSON.stringify({
         success: true,
         analysis: {
-          id: storedAnalysis?.id, // 🔧 FIXED: Now safely handles undefined
+          id: storedAnalysis?.id,
           message_id,
           tone: validatedResult.tone,
-          urgency_level: validatedResult.urgency_level,
+          urgency_level: validatedResult.urgencyLevel,
           intent: validatedResult.intent,
-          confidence_score: validatedResult.confidence_score,
+          confidence_score: validatedResult.confidenceScore,
           reasoning: validatedResult.reasoning,
-          // Enhanced fields
-          intensity: validatedResult.intensity,
-          secondary_tones: validatedResult.secondary_tones,
-          context_flags: validatedResult.context_flags,
-          anxiety_assessment: anxietyAssessment,
-          // 🆕 PHASE 1: Boundary analysis
-          boundary_analysis: boundaryAnalysis,
-          figurative_language_detected: figurativeLanguage,
+          // ✅ Return RSD features to frontend
+          rsd_triggers: validatedResult.rsdTriggers,
+          alternative_interpretations: validatedResult.alternativeInterpretations,
+          evidence: validatedResult.evidence,
         },
       }),
       {

@@ -40,18 +40,6 @@ class _SettingsScreenState extends State<SettingsScreen> with ErrorHandlerMixin 
         type: AIFeatureType.smartMessageInterpreter,
         isEnabled: true,
       ),
-      AIFeatureType.adaptiveResponseAssistant: AIFeature(
-        type: AIFeatureType.adaptiveResponseAssistant,
-        isEnabled: true,
-      ),
-      AIFeatureType.smartInboxFilters: AIFeature(
-        type: AIFeatureType.smartInboxFilters,
-        isEnabled: true,
-      ),
-      AIFeatureType.ragContextPanel: AIFeature(
-        type: AIFeatureType.ragContextPanel,
-        isEnabled: true,
-      ),
     };
   }
   

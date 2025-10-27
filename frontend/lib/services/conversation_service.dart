@@ -20,6 +20,7 @@ class ConversationService {
     required String title,
     String? description,
     bool isGroup = false,
+    List<String>? participantUserIds, // Additional participants to add
   }) async {
     final currentUser = _supabase.auth.currentUser;
     if (currentUser == null) {
@@ -30,13 +31,16 @@ class ConversationService {
     final timestamp = now.millisecondsSinceEpoch ~/ 1000;
     final conversationId = const Uuid().v4();
     
+    // Determine if it's a group based on participant count
+    final actualIsGroup = isGroup || (participantUserIds != null && participantUserIds.length > 1);
+    
     final conversation = Conversation(
       id: conversationId,
       title: title,
       description: description,
       createdAt: timestamp,
       updatedAt: timestamp,
-      isGroup: isGroup,
+      isGroup: actualIsGroup,
       lastMessageAt: timestamp,
       isSynced: false,
     );
@@ -51,30 +55,55 @@ class ConversationService {
         'id': conversationId,
         'title': title,
         'description': description,
-        'is_group': isGroup,
+        'is_group': actualIsGroup,
         'created_by': currentUser.id,
         'created_at': DateTime.fromMillisecondsSinceEpoch(timestamp * 1000).toIso8601String(),
         'updated_at': DateTime.fromMillisecondsSinceEpoch(timestamp * 1000).toIso8601String(),
       });
 
-      // Add current user as participant
-      final participantId = const Uuid().v4();
+      // Add current user as participant (admin)
+      final currentUserParticipantId = const Uuid().v4();
       await _supabase.from('conversation_participants').insert({
-        'id': participantId,
+        'id': currentUserParticipantId,
         'conversation_id': conversationId,
         'user_id': currentUser.id,
         'joined_at': DateTime.fromMillisecondsSinceEpoch(timestamp * 1000).toIso8601String(),
+        'is_admin': true,
       });
 
-      // Save participant locally
+      // Save current user participant locally
       await _db.participantDao.addParticipant(Participant(
-        id: participantId,
+        id: currentUserParticipantId,
         conversationId: conversationId,
         userId: currentUser.id,
         joinedAt: timestamp,
         isAdmin: true,
         isSynced: true,
       ));
+
+      // Add additional participants if provided
+      if (participantUserIds != null && participantUserIds.isNotEmpty) {
+        for (final userId in participantUserIds) {
+          final participantId = const Uuid().v4();
+          await _supabase.from('conversation_participants').insert({
+            'id': participantId,
+            'conversation_id': conversationId,
+            'user_id': userId,
+            'joined_at': DateTime.fromMillisecondsSinceEpoch(timestamp * 1000).toIso8601String(),
+            'is_admin': false,
+          });
+
+          // Save participant locally
+          await _db.participantDao.addParticipant(Participant(
+            id: participantId,
+            conversationId: conversationId,
+            userId: userId,
+            joinedAt: timestamp,
+            isAdmin: false,
+            isSynced: true,
+          ));
+        }
+      }
 
       // Mark conversation as synced
       await _db.conversationDao.markConversationAsSynced(conversationId);

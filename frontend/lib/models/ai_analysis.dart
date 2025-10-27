@@ -9,14 +9,7 @@ class AIAnalysis {
   final double? confidenceScore;
   final int analysisTimestamp;
   
-  // ✅ NEW ENHANCED FIELDS
-  final int? intensity;
-  final List<String>? secondaryTones;
-  final Map<String, dynamic>? contextFlags;
-  final Map<String, dynamic>? anxietyAssessment;
-  final BoundaryAnalysis? boundaryAnalysis;
-  
-  // ✅ PHASE 1: Smart Message Interpreter fields
+  // ✅ FEATURES 1-3: Smart Message Interpreter fields
   final List<RSDTrigger>? rsdTriggers;
   final List<MessageInterpretation>? alternativeInterpretations;
   final List<Evidence>? evidence;
@@ -29,13 +22,7 @@ class AIAnalysis {
     this.intent,
     this.confidenceScore,
     required this.analysisTimestamp,
-    // ✅ NEW
-    this.intensity,
-    this.secondaryTones,
-    this.contextFlags,
-    this.anxietyAssessment,
-    this.boundaryAnalysis,
-    // ✅ PHASE 1
+    // ✅ FEATURES 1-3
     this.rsdTriggers,
     this.alternativeInterpretations,
     this.evidence,
@@ -66,7 +53,7 @@ class AIAnalysis {
       }
       
       // 🔧 Helper to parse JSONB arrays from Supabase
-      List<String>? _parseJsonbArray(dynamic value) {
+      List<String>? parseJsonbArray(dynamic value) {
         if (value == null) return null;
         if (value is List) {
           // Already a list
@@ -85,17 +72,7 @@ class AIAnalysis {
         confidenceScore: parseNum(json['confidence_score'])?.toDouble(),
         analysisTimestamp: parseNum(json['analysis_timestamp'])?.toInt() ?? 
                            DateTime.now().millisecondsSinceEpoch ~/ 1000,
-        // ✅ Parse new fields
-        // 🔧 FIXED: intensity is TEXT in database, not INT
-        intensity: null, // intensity field is now TEXT in DB (very_low, low, medium, high, very_high)
-        // 🔧 FIXED: secondaryTones is JSONB array in database
-        secondaryTones: _parseJsonbArray(json['secondary_tones']),
-        contextFlags: json['context_flags'] as Map<String, dynamic>?,
-        anxietyAssessment: json['anxiety_assessment'] as Map<String, dynamic>?,
-        boundaryAnalysis: json['boundary_analysis'] != null
-            ? BoundaryAnalysis.fromJson(json['boundary_analysis'] as Map<String, dynamic>)
-            : null,
-        // ✅ PHASE 1: Parse RSD, interpretations, evidence (with error handling)
+        // ✅ FEATURES 1-3: Parse RSD, interpretations, evidence (with error handling)
         rsdTriggers: (json['rsd_triggers'] as List<dynamic>?)
             ?.map((e) {
               try {
@@ -145,13 +122,7 @@ class AIAnalysis {
       'intent': intent,
       'confidence_score': confidenceScore,
       'analysis_timestamp': analysisTimestamp,
-      // ✅ Include new fields
-      if (intensity != null) 'intensity': intensity,
-      if (secondaryTones != null) 'secondary_tones': secondaryTones,
-      if (contextFlags != null) 'context_flags': contextFlags,
-      if (anxietyAssessment != null) 'anxiety_assessment': anxietyAssessment,
-      if (boundaryAnalysis != null) 'boundary_analysis': boundaryAnalysis!.toJson(),
-      // ✅ PHASE 1 fields
+      // ✅ FEATURES 1-3 fields
       if (rsdTriggers != null) 'rsd_triggers': rsdTriggers!.map((e) => e.toJson()).toList(),
       if (alternativeInterpretations != null) 'alternative_interpretations': 
           alternativeInterpretations!.map((e) => e.toJson()).toList(),
@@ -173,7 +144,7 @@ class AIAnalysis {
   @override
   String toString() {
     return 'AIAnalysis(id: $id, messageId: $messageId, tone: $tone, '
-           'urgency: $urgencyLevel, intensity: $intensity, intent: $intent, confidence: $confidenceScore)';
+           'urgency: $urgencyLevel, intent: $intent, confidence: $confidenceScore)';
   }
 }
 
@@ -181,59 +152,7 @@ class AIAnalysis {
 // PHASE 1: Smart Message Interpreter - Helper Classes
 // ============================================================================
 
-/// Boundary violation analysis
-class BoundaryAnalysis {
-  final bool hasViolation;
-  final BoundaryViolationType type;
-  final String explanation;
-  final List<String> suggestedResponses;
-  final int severity; // 1 = low, 2 = medium, 3 = high
-  
-  const BoundaryAnalysis({
-    required this.hasViolation,
-    required this.type,
-    required this.explanation,
-    required this.suggestedResponses,
-    required this.severity,
-  });
-  
-  factory BoundaryAnalysis.fromJson(Map<String, dynamic> json) {
-    final typeStr = json['type'] as String? ?? 'none';
-    final typeEnum = BoundaryViolationType.values.firstWhere(
-      (e) => e.toString() == 'BoundaryViolationType.$typeStr',
-      orElse: () => BoundaryViolationType.none,
-    );
-    
-    return BoundaryAnalysis(
-      hasViolation: json['hasViolation'] as bool? ?? false,
-      type: typeEnum,
-      explanation: json['explanation'] as String? ?? '',
-      suggestedResponses: (json['suggestedResponses'] as List<dynamic>?)
-          ?.map((e) => e.toString())
-          .toList() ?? [],
-      severity: (json['severity'] as num?)?.toInt() ?? 1,
-    );
-  }
-  
-  Map<String, dynamic> toJson() {
-    return {
-      'hasViolation': hasViolation,
-      'type': type.toString().split('.').last,
-      'explanation': explanation,
-      'suggestedResponses': suggestedResponses,
-      'severity': severity,
-    };
-  }
-}
-
-enum BoundaryViolationType {
-  none,
-  afterHours,        // Messages outside work hours
-  urgentPressure,    // Pressure language ("need this NOW")
-  guiltTripping,     // Manipulation tactics
-  overstepping,      // Asking too much/too personal
-  repeated,          // Pattern of boundary pushing
-}
+// (BoundaryAnalysis removed - use BoundaryViolation directly from backend)
 
 /// RSD Trigger model
 class RSDTrigger {

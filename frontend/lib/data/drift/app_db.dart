@@ -80,6 +80,23 @@ class Receipts extends Table {
   ];
 }
 
+class Reactions extends Table {
+  TextColumn get id => text()();
+  TextColumn get messageId => text()();
+  TextColumn get userId => text()();
+  TextColumn get emoji => text()(); // '👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '🎉'
+  IntColumn get createdAt => integer()();
+  BoolColumn get isSynced => boolean().withDefault(const Constant(false))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+
+  @override
+  List<Set<Column>> get uniqueKeys => [
+    {messageId, userId, emoji}
+  ];
+}
+
 class PendingOutbox extends Table {
   TextColumn get id => text()();
   TextColumn get operation => text()(); // 'send_message', 'ack_receipt'
@@ -116,7 +133,7 @@ class AiAnalysis extends Table {
 // Main database class
 // Note: AiAnalysis table and AIAnalysisDao commented out (using remote-only approach)
 @DriftDatabase(
-  tables: [Conversations, Messages, Participants, Receipts, PendingOutbox],
+  tables: [Conversations, Messages, Participants, Receipts, Reactions, PendingOutbox],
   daos: [ConversationDao, MessageDao, ReceiptDao, ParticipantDao, PendingOutboxDao],
 )
 class AppDb extends _$AppDb {
@@ -146,6 +163,7 @@ class AppDb extends _$AppDb {
   static AppDb get instance => _instance ??= AppDb();
 
   /// Close the database connection
+  @override
   Future<void> close() async {
     await super.close();
     _instance = null;

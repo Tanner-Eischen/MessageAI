@@ -43,7 +43,6 @@ void main() async {
     print('✅ Background message handler registered');
   } catch (e) {
     print('❌ Firebase initialization error: $e');
-    print('Push notifications will not work. Run "flutterfire configure" to set up Firebase.');
   }
 
   // Validate environment configuration
@@ -66,7 +65,7 @@ void main() async {
   
   // Run the app with Riverpod provider scope
   runApp(
-    ProviderScope(
+    const ProviderScope(
       child: _AppWithNotifications(),
     ),
   );

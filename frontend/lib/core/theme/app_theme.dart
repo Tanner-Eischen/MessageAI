@@ -38,6 +38,11 @@ class AppTheme {
   static const Color accentRed = Color(0xFFF44336);      // Error, urgent
   static const Color accentOrange = Color(0xFFFF9800);   // Warning
   
+  /// Peek Zone Icon Colors
+  static const Color rsdColor = Color(0xFFFFC107);       // Amber for RSD
+  static const Color boundaryColor = Color(0xFFFF9800);  // Orange for Boundaries
+  static const Color actionColor = Color(0xFF4CAF50);    // Green for Actions
+  
   // ============================================================================
   // TYPOGRAPHY
   // ============================================================================

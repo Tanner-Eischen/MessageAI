@@ -1,6 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:messageai/core/theme/app_theme.dart';
-import 'package:messageai/models/draft_analysis.dart';
+
+/// Enum for relationship types
+enum RelationshipType {
+  family('👨‍👩‍👧 Family', Icons.family_restroom),
+  romantic('💕 Romantic', Icons.favorite),
+  friend('👥 Friend', Icons.people),
+  professional('💼 Professional', Icons.work),
+  acquaintance('🤝 Acquaintance', Icons.handshake),
+  ;
+
+  final String displayName;
+  final IconData icon;
+
+  const RelationshipType(this.displayName, this.icon);
+}
 
 /// Simple dialog for selecting relationship type
 class RelationshipTypeSelector extends StatelessWidget {
@@ -15,8 +29,6 @@ class RelationshipTypeSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return AlertDialog(
       title: const Text('Set Relationship Type'),
       content: Column(

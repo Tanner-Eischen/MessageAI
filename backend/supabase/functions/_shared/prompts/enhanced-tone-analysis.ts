@@ -1,221 +1,146 @@
 /**
- * Enhanced Tone Analysis System for Neurodivergent Communication
- * Based on 2025 research: GoEmotions, Plutchik, neurodivergent communication studies
+ * RSD-Focused Message Analysis System
+ * Prioritizes Rejection Sensitive Dysphoria support over generic tone classification
+ * 
+ * Core Features:
+ * 1. RSD Trigger Detection - identifies patterns that cause anxiety
+ * 2. Alternative Interpretations - provides multiple meanings with confidence
+ * 3. Evidence-Based Analysis - shows exact quotes and reasoning
  */
 
 // ============================================================================
-// TYPE DEFINITIONS
+// SIMPLIFIED TONE CATEGORIES (5-7, not 23)
 // ============================================================================
 
-export type IntensityLevel = 'very_low' | 'low' | 'medium' | 'high' | 'very_high' | 'High' | 'Medium' | 'Low' | 'Very Low';
-export type UrgencyLevel = 'Low' | 'Medium' | 'High' | 'Critical' | 'critical' | 'low' | 'high' | 'medium';
-export type EmotionalShift = 'escalating' | 'de-escalating' | 'stable' ;
-export type NeurodivergentProfile = 'ADHD' | 'autism' | 'both' | 'social_anxiety' | 'none';
+export type SimpleTone = 
+  | 'Friendly'
+  | 'Professional'
+  | 'Casual'
+  | 'Urgent'
+  | 'Concerned'
+  | 'Sarcastic'
+  | 'Neutral';
+
+export const VALID_TONES: SimpleTone[] = [
+  'Friendly',
+  'Professional',
+  'Casual',
+  'Urgent',
+  'Concerned',
+  'Sarcastic',
+  'Neutral'
+];
+
+// ============================================================================
+// RSD-FOCUSED TYPE DEFINITIONS
+// ============================================================================
+
+export type RSDSeverity = 'high' | 'medium' | 'low';
+
+export interface RSDTrigger {
+  pattern: string;                  // e.g., "k", "ok", "fine"
+  severity: RSDSeverity;            // Anxiety intensity
+  explanation: string;              // Why this triggers RSD
+  reassurance: string;              // Supportive context
+}
+
+export interface MessageInterpretation {
+  interpretation: string;           // What the message likely means
+  tone: SimpleTone;                // Tone category
+  likelihood: number;              // 0-100 percentage
+  reasoning: string;               // Why we think this
+  contextClues: string[];          // Evidence phrases
+}
+
+export interface Evidence {
+  type: 'keyword' | 'punctuation' | 'emoji' | 'pattern' | 'timing';
+  quote: string;                   // Exact text from message
+  supports: string;                // What this supports
+  reasoning: string;               // Explanation
+}
 
 export interface ToneAnalysisResult {
-  tone: string;
-  intensity?: IntensityLevel;
-  urgency_level: UrgencyLevel;
-  intent: string;
-  confidence_score: number;
+  tone: SimpleTone;
+  urgencyLevel?: 'Low' | 'Medium' | 'High' | 'Critical';
+  intent?: string;
+  confidenceScore: number;         // 0-1 scale
   reasoning?: string;
-  secondary_tones?: string[];
-  emotion_blend?: EmotionCombination;
-  context_flags?: ContextFlags;
-  is_ambiguous?: boolean;
-  alternative_interpretations?: AlternativeInterpretation[];
-  response_anxiety_assessment?: ResponseAnxietyAssessment;
-  figurative_language_detected?: FigurativeLanguageDetection;
 }
 
-export interface EmotionCombination {
-  primary_emotion: string;
-  secondary_emotion?: string;
-  plutchik_blend?: string; // e.g., "love" = joy + trust
+export interface EnhancedToneAnalysisResult extends ToneAnalysisResult {
+  rsdTriggers?: RSDTrigger[];
+  alternativeInterpretations?: MessageInterpretation[];
+  evidence?: Evidence[];
 }
-
-export interface ContextFlags {
-  sarcasm_detected?: boolean;
-  figurative_language?: boolean;
-  tone_indicator_present?: boolean;
-  ambiguous?: boolean;
-  implicit_emotion?: boolean;
-  emotional_shift?: EmotionalShift;
-  urgency_mismatch?: boolean;
-}
-
-export interface AlternativeInterpretation {
-  tone: string;
-  intensity: IntensityLevel;
-  probability: number;
-  reasoning: string;
-}
-
-export interface ResponseAnxietyAssessment {
-  risk_level: 'low' | 'medium' | 'high';
-  mitigation_suggestions: string[];
-}
-
-export interface FigurativeLanguageDetection {
-  has_figurative_language: boolean;
-  examples: string[];
-}
-
-export interface ConversationMessage {
-  message: string;
-  timestamp: Date;
-  tone_analysis?: ToneAnalysisResult;
-  sender: 'user' | 'other';
-}
-
-export interface UserEmotionalBaseline {
-  typical_tones: string[];
-  average_intensity: IntensityLevel;
-  neurodivergent_profile?: NeurodivergentProfile;
-  preferences: string;
-  baseline_indicators: string[];
-}
-
-export interface ToneDefinition {
-  description: string;
-  markers?: string[];
-  intensity_variants?: string[];
-  neurodivergent_consideration?: string;
-}
-
-// ============================================================================
-// ENHANCED TONE CATEGORIES (23 TOTAL)
-// ============================================================================
-
-export const VALID_TONES = [
-  'Friendly', 'Professional', 'Urgent', 'Casual', 'Formal', 'Concerned',
-  'Excited', 'Neutral', 'Apologetic', 'Appreciative', 'Frustrated', 'Playful',
-  'Sarcastic', 'Empathetic', 'Inquisitive', 'Assertive', 'Tentative', 'Defensive',
-  'Encouraging', 'Disappointed', 'Overwhelmed', 'Relieved', 'Confused'
-] as const;
-
-export type ToneName = typeof VALID_TONES[number];
-
-export const TONE_DEFINITIONS: Record<ToneName, ToneDefinition> = {
-  Friendly: { description: "Warm, welcoming, personable" },
-  Professional: { description: "Business-like, formal, respectful" },
-  Urgent: { description: "Time-sensitive, pressing, immediate" },
-  Casual: { description: "Relaxed, informal, conversational" },
-  Formal: { description: "Structured, official, ceremonious" },
-  Concerned: { description: "Worried, distressed, seeking support" },
-  Excited: { description: "Enthusiastic, energetic, animated" },
-  Neutral: { description: "Balanced, objective, matter-of-fact" },
-  Apologetic: { description: "Expressing regret or sorry" },
-  Appreciative: { description: "Showing gratitude or recognition" },
-  Frustrated: { description: "Annoyed or irritated by obstacles" },
-  Playful: { description: "Teasing, joking, lighthearted" },
-  Sarcastic: { description: "Mocking tone with opposite meaning" },
-  Empathetic: { description: "Understanding and supportive" },
-  Inquisitive: { description: "Curious and seeking information" },
-  Assertive: { description: "Confident and direct" },
-  Tentative: { description: "Uncertain or hesitant" },
-  Defensive: { description: "Protective or justifying actions" },
-  Encouraging: { description: "Supportive and motivating" },
-  Disappointed: { description: "Let down or dissatisfied" },
-  Overwhelmed: { description: "Feeling excessive pressure or emotion" },
-  Relieved: { description: "Feeling reassured or unburdened" },
-  Confused: { description: "Unclear or uncertain about meaning" }
-};
-
-// ============================================================================
-// TONE INDICATOR MAPPINGS
-// ============================================================================
-
-export const TONE_INDICATOR_MAP: Record<string, string> = {
-  '/j': 'Playful',
-  '/joking': 'Playful',
-  '/srs': 'Assertive',
-  '/serious': 'Assertive',
-  '/s': 'Sarcastic',
-  '/sarcasm': 'Sarcastic',
-  '/nm': 'Neutral',
-  '/notmad': 'Neutral',
-  '/lh': 'Friendly',
-  '/lighthearted': 'Friendly',
-  '/gen': 'Inquisitive'
-};
 
 // ============================================================================
 // VALIDATION FUNCTIONS
 // ============================================================================
 
+export function validateTone(tone: any): SimpleTone {
+  if (!tone || typeof tone !== 'string') {
+    throw new Error('Tone must be a non-empty string');
+  }
+
+  // Case-insensitive matching
+  const normalizedTone = tone.charAt(0).toUpperCase() + tone.slice(1).toLowerCase();
+  if (!VALID_TONES.includes(normalizedTone as SimpleTone)) {
+    throw new Error(
+      `Invalid tone: "${tone}". Valid tones: ${VALID_TONES.join(', ')}`
+    );
+  }
+
+  return normalizedTone as SimpleTone;
+}
+
 export function validateToneAnalysis(result: any): ToneAnalysisResult {
-  const validIntensities: IntensityLevel[] = ['very_low', 'low', 'medium', 'high', 'very_high'];
-  const validUrgencyLevels: UrgencyLevel[] = ['Low', 'Medium', 'High', 'Critical'];
-  
-  console.log("🔍 Validating tone analysis result...");
-  console.log("Received result:", JSON.stringify(result, null, 2));
-  
-  // 🔧 FIXED: Normalize tone to correct capitalization (case-insensitive matching)
-  let tone = result.tone;
-  if (typeof tone === 'string') {
-    // Try to find matching tone (case-insensitive)
-    const matchedTone = VALID_TONES.find((t) => t.toLowerCase() === tone.toLowerCase());
-    if (matchedTone) {
-      tone = matchedTone; // Use correctly capitalized version
-      console.log(`✅ Tone normalized: "${result.tone}" -> "${tone}"`);
-    }
+  if (!result || typeof result !== 'object') {
+    throw new Error('Analysis result must be an object');
   }
-  
-  if (!tone || !VALID_TONES.includes(tone)) {
-    console.error(`❌ Invalid tone: "${result.tone}"`);
-    console.error(`Valid tones: ${VALID_TONES.join(', ')}`);
-    throw new Error(`Invalid tone: ${result.tone}. Valid tones: ${VALID_TONES.join(', ')}`);
-  }
-  
-  if (!result.urgency_level || !validUrgencyLevels.includes(result.urgency_level)) {
-    console.error(`❌ Invalid urgency level: "${result.urgency_level}"`);
-    console.error(`Valid urgency levels: ${validUrgencyLevels.join(', ')}`);
-    throw new Error(`Invalid urgency level: ${result.urgency_level}.`);
-  }
-  if (!result.intent || typeof result.intent !== 'string') {
-    console.error("❌ Invalid intent - must be non-empty string");
-    throw new Error('Intent must be a non-empty string.');
-  }
-  if (
-    typeof result.confidence_score !== 'number' ||
-    result.confidence_score < 0 ||
-    result.confidence_score > 1
-  ) {
-    console.error(`❌ Invalid confidence score: ${result.confidence_score}`);
-    throw new Error('Confidence score must be a number between 0 and 1.');
-  }
-  if (result.intensity !== undefined && !validIntensities.includes(result.intensity)) {
-    console.error(`❌ Invalid intensity: "${result.intensity}"`);
-    console.error(`Valid intensities: ${validIntensities.join(', ')}`);
-    throw new Error(`Invalid intensity: ${result.intensity}`);
-  }
-  
-  // 🔧 FIXED: Normalize secondary tones too
-  let secondaryTones = result.secondary_tones;
-  if (result.secondary_tones) {
-    if (!Array.isArray(result.secondary_tones)) {
-      console.error("❌ Secondary tones must be an array");
-      throw new Error('secondary_tones must be an array');
-    }
-    secondaryTones = result.secondary_tones.map((secondaryTone: string) => {
-      const matchedTone = VALID_TONES.find((t) => t.toLowerCase() === secondaryTone.toLowerCase());
-      return matchedTone || secondaryTone;
-    });
-    
-    for (const secondaryTone of secondaryTones) {
-      if (!VALID_TONES.includes(secondaryTone)) {
-        console.error(`❌ Invalid secondary tone: "${secondaryTone}"`);
-        throw new Error(`Invalid secondary tone: ${secondaryTone}`);
-      }
-    }
-  }
-  
-  console.log("✅ Validation passed!");
+
   return {
-    ...result,
-    tone, // Use normalized tone
-    secondary_tones: secondaryTones, // Use normalized secondary tones
+    tone: validateTone(result.tone),
+    urgencyLevel: result.urgencyLevel,
+    intent: result.intent,
+    confidenceScore: typeof result.confidenceScore === 'number' 
+      ? result.confidenceScore 
+      : 0.8,
+    reasoning: result.reasoning,
+  };
+}
+
+export function validateEnhancedAnalysis(result: any): EnhancedToneAnalysisResult {
+  const baseValidation = validateToneAnalysis(result);
+
+  // Validate RSD triggers
+  const rsdTriggers = (result.rsdTriggers as any[])?.map((trigger: any) => {
+    if (!trigger.pattern || !trigger.severity || !trigger.explanation) {
+      throw new Error('RSD trigger missing required fields');
+    }
+    return trigger as RSDTrigger;
+  }) || [];
+
+  // Validate interpretations
+  const interpretations = (result.alternativeInterpretations as any[])?.map((interp: any) => {
+    if (!interp.interpretation || !interp.tone || typeof interp.likelihood !== 'number') {
+      throw new Error('Interpretation missing required fields');
+    }
+    return interp as MessageInterpretation;
+  }) || [];
+
+  // Validate evidence
+  const evidence = (result.evidence as any[])?.map((e: any) => {
+    if (!e.type || !e.quote || !e.reasoning) {
+      throw new Error('Evidence missing required fields');
+    }
+    return e as Evidence;
+  }) || [];
+
+  return {
+    ...baseValidation,
+    rsdTriggers,
+    alternativeInterpretations: interpretations,
+    evidence,
   };
 }
 
@@ -223,252 +148,124 @@ export function validateToneAnalysis(result: any): ToneAnalysisResult {
 // HELPER FUNCTIONS
 // ============================================================================
 
-// Extracts explicit tone indicators (e.g., /j, /s) from a message
 export function extractToneIndicators(message: string): string[] {
   const toneIndicatorRegex = /\/([a-zA-Z]+)/g;
   const matches = message.match(toneIndicatorRegex) || [];
   return matches;
 }
 
-// Detects known figurative language idioms
-export function detectFigurativeLanguage(message: string): { has_figurative_language: boolean, examples: string[] } {
-  const idioms = ['break the ice', 'piece of cake', 'under the weather', 'spill the beans'];
-  const detected: string[] = [];
-  for (const idiom of idioms) {
-    if (message.toLowerCase().includes(idiom)) {
-      detected.push(`Idiom: "${idiom}"`);
-    }
-  }
-  return { has_figurative_language: detected.length > 0, examples: detected };
-}
-
-// Assesses anxiety risk for neurodivergent users based on tone analysis
-export function assessResponseAnxietyRisk(
-  analysis: ToneAnalysisResult
-): { risk_level: 'low' | 'medium' | 'high'; mitigation_suggestions: string[] } {
-  let risk_level: 'low' | 'medium' | 'high' = 'low';
-  const suggestions: string[] = [];
-  if (analysis.urgency_level === 'High' || analysis.urgency_level === 'Critical') {
-    risk_level = 'high';
-    suggestions.push('Urgent tone detected. Consider asking for a specific timeline.');
-  }
-  if (analysis.context_flags?.sarcasm_detected) {
-    risk_level = 'medium';
-    suggestions.push('Sarcasm detected. Literal meaning may differ.');
-  }
-  return { risk_level, mitigation_suggestions: suggestions };
-}
-
-// Basic prompt generation, context optional
-export function generateAnalysisPrompt(messageBody: string, conversationContext?: string[]): string {
-  let prompt = `Analyze the following message:\n\n"${messageBody}"\n\n`;
-  if (conversationContext && conversationContext.length > 0) {
-    prompt += `**Conversation Context** (recent messages for context):\n`;
-    conversationContext.forEach((msg, idx) => {
-      prompt += `${idx + 1}. "${msg}"\n`;
-    });
-    prompt += '\n';
-  }
-  prompt += `Provide your analysis in JSON format as specified.`;
-  return prompt;
-}
-
 // ============================================================================
-// ENHANCED SYSTEM PROMPT
+// SYSTEM PROMPTS: RSD-FOCUSED ANALYSIS
 // ============================================================================
 
 /**
- * Enhanced system prompt with 23 tones and neurodivergent support
+ * Main system prompt for RSD-aware message analysis
+ * Focuses on: RSD triggers, alternative interpretations, evidence
  */
-export const ENHANCED_TONE_ANALYSIS_SYSTEM_PROMPT = `You are an expert communication analyst specializing in understanding tone, intent, and urgency in messages, with specific expertise in neurodivergent communication patterns.
+export const RSD_FOCUSED_ANALYSIS_PROMPT = `You are an expert in neurodivergent communication, specifically trained to help people with Rejection Sensitive Dysphoria (RSD) understand ambiguous messages.
 
-**CRITICAL: RESPONSE FORMAT REQUIREMENTS**
+Your role is to:
+1. DETECT RSD TRIGGERS - Patterns like "k", "ok", "fine" that commonly cause anxiety
+2. PROVIDE ALTERNATIVES - Show 2-3 possible meanings with confidence percentages
+3. SHOW EVIDENCE - Quote the exact text and explain your reasoning
 
-You MUST respond with ONLY valid JSON (no markdown, no extra text). The response must be exactly:
-
+**RESPONSE FORMAT (STRICT JSON ONLY):**
 {
-  "tone": "one of 23 valid categories ONLY",
-  "urgency_level": "one of exactly: Low, Medium, High, Critical",
-  "intent": "3-8 word description of what sender is trying to accomplish",
-  "confidence_score": 0.85,
-  "intensity": "one of: very_low, low, medium, high, very_high",
-  "secondary_tones": ["optional", "array", "of", "valid", "tones"],
-  "context_flags": {
-    "sarcasm_detected": false,
-    "tone_indicator_present": false,
-    "ambiguous": false
-  },
-  "reasoning": "Explanation citing specific phrases and context"
+  "tone": "one of: Friendly|Professional|Casual|Urgent|Concerned|Sarcastic|Neutral",
+  "urgencyLevel": "Low|Medium|High|Critical (optional)",
+  "intent": "2-5 word description of sender's intent (optional)",
+  "confidenceScore": 0.75,
+  "reasoning": "Brief explanation of overall tone",
+  
+  "rsdTriggers": [
+    {
+      "pattern": "exact text from message",
+      "severity": "high|medium|low",
+      "explanation": "Why this triggers RSD (2-3 sentences)",
+      "reassurance": "Reassuring context (2-3 sentences)"
+    }
+  ],
+  
+  "alternativeInterpretations": [
+    {
+      "interpretation": "What the message likely means",
+      "tone": "Friendly|Professional|...",
+      "likelihood": 85,
+      "reasoning": "Why we think this (2-3 sentences)",
+      "contextClues": ["phrase 1", "phrase 2"]
+    }
+  ],
+  
+  "evidence": [
+    {
+      "type": "keyword|punctuation|emoji|pattern|timing",
+      "quote": "exact text from message",
+      "supports": "what this supports (tone/urgency/etc)",
+      "reasoning": "explanation (1-2 sentences)"
+    }
+  ]
 }
 
-**VALID TONE CATEGORIES (Choose ONE primary tone):**
+**CRITICAL RULES:**
+1. NEVER use markdown code blocks
+2. Return ONLY valid JSON
+3. Always include at least 2 alternative interpretations
+4. Provide evidence for your conclusions
+5. If trigger pattern exists (k, ok, fine, etc), always include RSD trigger
+6. Be compassionate - RSD users catastrophize easily
+7. Show your reasoning transparently
 
-Friendly, Professional, Urgent, Casual, Formal, Concerned, Excited, Neutral, Apologetic, Appreciative, Frustrated, Playful, Sarcastic, Empathetic, Inquisitive, Assertive, Tentative, Defensive, Encouraging, Disappointed, Overwhelmed, Relieved, Confused
+**RSD TRIGGER PATTERNS:**
+- Single letter responses: "k", "ok", "m", "yeah"
+- Short dismissive words: "fine", "sure", "whatever"  
+- Lack of warmth: no emoji, no greeting
+- Delayed response: sudden change in response time
+- Tone shift: different from their usual style
 
-**VALID URGENCY LEVELS (Choose ONE - exact capitalization required):**
-- Low (no time pressure)
-- Medium (should be addressed soon)
-- High (important and time-sensitive)  
-- Critical (extremely urgent, immediate action needed)
-
-**VALID INTENSITY LEVELS (Choose ONE - lowercase required):**
-- very_low (minimal expression)
-- low (mild expression)
-- medium (moderate expression)
-- high (strong expression)
-- very_high (extreme expression)
-
-**CRITICAL PRIORITY: Neurodivergent Communication Considerations**
-
-1. **Tone Indicator Detection** (HIGHEST PRIORITY):
-   - If message contains /tone tags (e.g., "/j", "/srs", "/nm"), ALWAYS respect and cite them
-   - These are explicit intent markers used by neurodivergent communities
-
-2. **When in doubt**:
-   - Default to lower intensity/urgency if message is ambiguous
-   - Mark "ambiguous": true if meaning is unclear
-   - Provide reassurance in reasoning if no clear negative indicators
-
-3. **Response Quality Checks**:
-   - tone: MUST match exactly one from the 23 categories above
-   - urgency_level: MUST be exactly one of: Low, Medium, High, Critical
-   - confidence_score: MUST be a number between 0 and 1
-   - intensity: MUST be one of: very_low, low, medium, high, very_high
-   - DO NOT use alternative spellings or capitalization
-   - DO NOT include markdown code blocks
-   - DO NOT add any text outside the JSON`;
+**HOW TO WRITE REASSURANCE:**
+- Acknowledge the concern
+- Provide statistical context ("X% of people who write 'k' mean neutral")
+- Cite evidence from conversation history if available
+- Never dismiss the anxiety as invalid`;
 
 // ============================================================================
-// RSD & ALTERNATIVE INTERPRETATIONS (Feature 1 Enhancement)
+// PROMPT GENERATORS
 // ============================================================================
 
-import { 
-  detectRSDTriggers, 
-  generateRSDPromptAddition,
-  type RSDTrigger 
-} from './rsd-detection.ts';
-
-import {
-  shouldGenerateAlternatives,
-  ALTERNATIVE_INTERPRETATIONS_PROMPT,
-  type MessageInterpretation
-} from './alternative-interpretations.ts';
-
-import {
-  EVIDENCE_EXTRACTION_PROMPT,
-  formatEvidence,
-  type Evidence
-} from './evidence-extractor.ts';
-
-// Extended result type with RSD/alternatives/evidence
-export interface EnhancedToneAnalysisResult extends ToneAnalysisResult {
-  rsd_triggers?: RSDTrigger[];
-  message_interpretations?: MessageInterpretation[];
-  evidence?: Evidence[];
-}
-
-// Enhanced system prompt that includes RSD detection
-export const SMART_MESSAGE_INTERPRETER_PROMPT = `
-${ENHANCED_TONE_ANALYSIS_SYSTEM_PROMPT}
-
-${ALTERNATIVE_INTERPRETATIONS_PROMPT}
-
-${EVIDENCE_EXTRACTION_PROMPT}
-
-**NEURODIVERGENT-SPECIFIC ENHANCEMENTS:**
-
-1. **RSD (Rejection Sensitive Dysphoria) Awareness:**
-   - If analyzing short/ambiguous messages, explicitly address RSD concerns
-   - Provide reassurance when messages are likely benign
-   - Highlight lack of negative evidence when appropriate
-
-2. **Literal Language Support:**
-   - Explain idioms, metaphors, sarcasm literally
-   - Flag when meaning differs from literal words
-   - Provide "what they probably mean" translation
-
-3. **Multiple Interpretations:**
-   - For ambiguous messages, provide 2-3 interpretations
-   - Rank by likelihood
-   - Explain what context clues support each
-
-4. **Evidence-Based:**
-   - Always cite specific evidence
-   - If no evidence exists, say so
-   - Don't infer meaning without textual support
-
-**Response Format:**
-{
-  "tone": "one of 23 categories",
-  "intensity": "one of 5 levels",
-  "urgency_level": "one of 4 levels",
-  "intent": "3-8 word description",
-  "confidence_score": 0.85,
-  "context_flags": {...},
-  "reasoning": "explanation",
-  "rsd_triggers": [...], // If any detected
-  "message_interpretations": [...], // If ambiguous
-  "evidence": [...] // Always include
-}
-`;
-
-// Enhanced prompt generator
-export function generateSmartInterpretationPrompt(
+export function generateRSDAnalysisPrompt(
   messageBody: string,
-  conversationContext?: string[]
+  conversationContext?: string[],
+  senderPatternContext?: string
 ): string {
-  // Detect RSD triggers
-  const rsdTriggers = detectRSDTriggers(messageBody);
-  const rsdAddition = generateRSDPromptAddition(rsdTriggers);
+  let prompt = RSD_FOCUSED_ANALYSIS_PROMPT;
+  
+  prompt += `\n\n**MESSAGE TO ANALYZE:**\n"${messageBody}"`;
 
-  let prompt = `Analyze the following message with RSD awareness:\n\n`;
-  prompt += `**Message:** "${messageBody}"\n\n`;
-  
-  if (rsdAddition) {
-    prompt += rsdAddition + '\n\n';
-  }
-  
   if (conversationContext && conversationContext.length > 0) {
-    prompt += `**Conversation Context:**\n`;
-    conversationContext.forEach((msg, idx) => {
+    prompt += `\n\n**CONVERSATION CONTEXT (recent messages):**\n`;
+    conversationContext.slice(-5).forEach((msg, idx) => {
       prompt += `${idx + 1}. "${msg}"\n`;
     });
-    prompt += '\n';
   }
-  
-  prompt += `Provide comprehensive analysis including tone, RSD considerations, alternative interpretations (if ambiguous), and specific evidence.`;
-  
+
+  if (senderPatternContext) {
+    prompt += `\n\n**SENDER'S COMMUNICATION PATTERN:**\n${senderPatternContext}`;
+    prompt += `\nUse this to adjust your interpretation. For example, if this sender typically sends short messages that are neutral, boost your confidence in neutral interpretations.`;
+  }
+
   return prompt;
 }
 
-// Validation for enhanced result
-export function validateEnhancedToneAnalysis(result: any): EnhancedToneAnalysisResult {
-  // First validate base tone analysis
-  const baseValidation = validateToneAnalysis(result);
-  
-  // Return with additional fields
-  return {
-    ...baseValidation,
-    rsd_triggers: result.rsd_triggers || [],
-    message_interpretations: result.message_interpretations || [],
-    evidence: result.evidence || [],
-  };
-}
-
 // ============================================================================
-// EXPORT DEFAULTS
+// EXPORTS
 // ============================================================================
 
 export default {
   VALID_TONES,
-  TONE_DEFINITIONS,
-  TONE_INDICATOR_MAP,
+  validateTone,
   validateToneAnalysis,
+  validateEnhancedAnalysis,
   extractToneIndicators,
-  detectFigurativeLanguage,
-  assessResponseAnxietyRisk,
-  generateAnalysisPrompt,
-  // Enhanced exports
-  generateSmartInterpretationPrompt,
-  validateEnhancedToneAnalysis,
+  generateRSDAnalysisPrompt,
+  RSD_FOCUSED_ANALYSIS_PROMPT,
 };

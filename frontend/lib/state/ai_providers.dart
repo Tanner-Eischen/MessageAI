@@ -1,51 +1,32 @@
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide Provider;
 import 'package:messageai/models/ai_analysis.dart';
-import 'package:messageai/models/draft_analysis.dart';
-import 'package:messageai/models/relationship_profile.dart';
-import 'package:messageai/models/follow_up_item.dart';
+import 'package:messageai/models/peek_content.dart';
 import 'package:messageai/services/ai_analysis_service.dart';
-import 'package:messageai/services/draft_analysis_service.dart';
 import 'package:messageai/services/message_interpreter_service.dart';
-import 'package:messageai/services/response_template_service.dart';
-import 'package:messageai/services/message_formatter_service.dart';
-import 'package:messageai/services/relationship_service.dart';
-import 'package:messageai/services/relationship_summary_service.dart';
-import 'package:messageai/services/context_preloader_service.dart';
-import 'package:messageai/services/follow_up_service.dart';
 import 'package:messageai/data/remote/supabase_client.dart';
 import 'package:messageai/state/providers.dart';
 
+// =============================================================================
+// FEATURE #1: Smart Message Interpreter - Core Providers
+// =============================================================================
+
 /// Provider for AI Analysis Service singleton
+/// Handles in-memory caching and deduplication of analyses
 final aiAnalysisServiceProvider = Provider<AIAnalysisService>((ref) {
   return AIAnalysisService();
 });
 
-/// Provider for Message Interpreter Service (Phase 1: Smart Message Interpreter)
+/// Provider for Message Interpreter Service
+/// Calls ai-interpret-message Edge Function for RSD trigger detection
+/// and alternative interpretation generation
 final messageInterpreterServiceProvider = Provider<MessageInterpreterService>((ref) {
   final supabase = ref.watch(supabaseClientProvider);
   return MessageInterpreterService(supabase);
 });
 
-// =============================================================================
-// PHASE 2: Adaptive Response Assistant Providers
-// =============================================================================
-
-/// Provider for Response Template Service (Phase 2)
-final responseTemplateServiceProvider = Provider<ResponseTemplateService>((ref) {
-  final service = ResponseTemplateService();
-  // Initialize templates on first access
-  service.loadTemplates();
-  return service;
-});
-
-/// Provider for Message Formatter Service (Phase 2)
-final messageFormatterServiceProvider = Provider<MessageFormatterService>((ref) {
-  final supabase = ref.watch(supabaseClientProvider);
-  return MessageFormatterService(supabase);
-});
-
-/// StateNotifier to track when to refresh analysis
+/// StateNotifier to trigger refreshes when new analyses arrive via realtime
 class AnalysisRefreshNotifier extends StateNotifier<int> {
   AnalysisRefreshNotifier() : super(0);
   
@@ -54,10 +35,11 @@ class AnalysisRefreshNotifier extends StateNotifier<int> {
   }
 }
 
+/// Provider for refresh state (auto-triggers on realtime updates)
 final analysisRefreshProvider = StateNotifierProvider<AnalysisRefreshNotifier, int>((ref) {
   final notifier = AnalysisRefreshNotifier();
   
-  // Listen to realtime updates on message_ai_analysis table
+  // Listen to realtime updates on ai_analysis table
   final supabase = SupabaseClientProvider.client;
   final channel = supabase.realtime.channel('ai_analysis_updates');
   
@@ -66,7 +48,7 @@ final analysisRefreshProvider = StateNotifierProvider<AnalysisRefreshNotifier, i
     ChannelFilter(
       event: 'INSERT',
       schema: 'public',
-      table: 'message_ai_analysis',
+      table: 'ai_analysis',
     ),
     (payload, [ref]) {
       print('🔄 AI analysis updated, refreshing providers...');
@@ -77,9 +59,9 @@ final analysisRefreshProvider = StateNotifierProvider<AnalysisRefreshNotifier, i
   channel.subscribe(
     (status, [error]) {
       if (status == 'SUBSCRIBED') {
-        print('✅ AI analysis realtime listener subscribed');
+        print('✅ Feature #1 analysis realtime listener subscribed');
       } else if (error != null) {
-        print('❌ AI analysis realtime error: $error');
+        print('❌ Feature #1 analysis realtime error: $error');
       }
     },
   );
@@ -94,7 +76,7 @@ final analysisRefreshProvider = StateNotifierProvider<AnalysisRefreshNotifier, i
 /// Fetch analysis for a single message (auto-refreshes on realtime updates)
 final messageAnalysisProvider = FutureProvider.family<AIAnalysis?, String>(
   (ref, messageId) async {
-    // Watch the refresh notifier to trigger rebuilds
+    // Watch the refresh notifier to trigger rebuilds when new analyses arrive
     ref.watch(analysisRefreshProvider);
     
     final service = ref.watch(aiAnalysisServiceProvider);
@@ -114,155 +96,101 @@ final conversationAnalysisProvider = FutureProvider.family<Map<String, AIAnalysi
 );
 
 /// Provider for triggering analysis requests
+/// Used when user long-presses a message to analyze it
 final requestAnalysisProvider = Provider((ref) {
   final service = ref.watch(aiAnalysisServiceProvider);
   return (String messageId, String messageBody) => 
       service.requestAnalysis(messageId, messageBody);
 });
 
-// =============================================================================
-// DRAFT ANALYSIS PROVIDERS (for outgoing messages)
-// =============================================================================
-
-/// Provider for Draft Analysis Service
-final draftAnalysisServiceProvider = Provider<DraftAnalysisService>((ref) {
-  final supabase = SupabaseClientProvider.client;
-  return DraftAnalysisService(supabase);
+/// Stream of analysis events (when analyses start/complete)
+final analysisEventStreamProvider = StreamProvider<dynamic>((ref) {
+  final aiService = ref.watch(aiAnalysisServiceProvider);
+  return aiService.analysisEventStream;
 });
 
-/// State notifier for managing draft analysis state (manual trigger)
-class DraftAnalysisNotifier extends StateNotifier<AsyncValue<DraftAnalysis?>> {
-  final DraftAnalysisService _service;
-
-  DraftAnalysisNotifier(this._service) : super(const AsyncValue.data(null));
-
-  /// Analyze a draft (called when user clicks "Check Message" button)
-  Future<void> analyzeDraft({
-    required String draftMessage,
-    String? conversationId,
-    RelationshipType? relationshipType,
-    List<String>? conversationHistory,
-  }) async {
-    // Clear if draft is empty
-    if (draftMessage.trim().isEmpty) {
-      state = const AsyncValue.data(null);
-      return;
-    }
-
-    // Set loading state
-    state = const AsyncValue.loading();
-
-    try {
-      final analysis = await _service.analyzeDraft(
-        draftMessage: draftMessage,
-        conversationId: conversationId,
-        relationshipType: relationshipType,
-        conversationHistory: conversationHistory,
-      );
-      state = AsyncValue.data(analysis);
-    } catch (error, stackTrace) {
-      state = AsyncValue.error(error, stackTrace);
-    }
-  }
-
-  /// Clear current analysis
-  void clear() {
-    state = const AsyncValue.data(null);
-  }
-}
-
-/// Provider for draft analysis state (manual trigger)
-final draftAnalysisProvider =
-    StateNotifierProvider<DraftAnalysisNotifier, AsyncValue<DraftAnalysis?>>(
-  (ref) {
-    final service = ref.watch(draftAnalysisServiceProvider);
-    return DraftAnalysisNotifier(service);
-  },
-);
-
 // =============================================================================
-// PHASE 3: Smart Inbox with Context Providers
+// PLACEHOLDER: Phase 2-5 Providers
+// These will be added when implementing Features 2-5
 // =============================================================================
 
-/// Provider for Relationship Service (Phase 3)
-final relationshipServiceProvider = Provider<RelationshipService>((ref) {
-  return RelationshipService();
+// TODO: Feature #2 - Boundary Detection Providers
+// TODO: Feature #3 - Evidence-Based Analysis Providers  
+// TODO: Feature #4 - Action Item Tracking Providers
+// TODO: Feature #5 - Catch Me Up Summaries Providers
+
+// ============================================================================
+// PEEK ZONE CONTENT PROVIDERS
+// ============================================================================
+/// Providers for managing content displayed in the peek zone across all 4 view modes
+/// These are template providers - integrate with your backend services
+
+/// Generate RSD analysis content for a specific message
+/// Used to populate the peek zone when an RSD-triggering message is detected
+/// 
+/// TODO: Implement by fetching message + AI analysis from backend
+/// Should return RSDAnalysis with message, sender, and interpretations
+final rsdAnalysisForMessageProvider = FutureProvider.family<RSDAnalysis?, String>((ref, messageId) async {
+  // Placeholder - integrate with your message/analysis data sources
+  // Example implementation:
+  /*
+  final messageAsync = ref.watch(messageProvider(messageId));
+  final analysisAsync = ref.watch(messageAnalysisProvider(messageId));
+  
+  return messageAsync.when(
+    data: (message) => analysisAsync.when(
+      data: (analysis) {
+        if (message == null || analysis == null || analysis.alternativeInterpretations == null) {
+          return null;
+        }
+        
+        return RSDAnalysis(
+          message: message,
+          sender: message.sender,
+          interpretations: analysis.alternativeInterpretations!,
+        );
+      },
+      loading: () => null,
+      error: (_, __) => null,
+    ),
+    loading: () => null,
+    error: (_, __) => null,
+  );
+  */
+  return null;
 });
 
-/// Provider for Relationship Summary Service (Phase 3)
-final relationshipSummaryServiceProvider = Provider<RelationshipSummaryService>((ref) {
-  final supabase = ref.watch(supabaseClientProvider);
-  return RelationshipSummaryService(supabase);
+/// Generate boundary violation analysis for a message
+/// Used when boundary patterns are detected in incoming messages
+/// 
+/// TODO: Integrate with backend boundary detection service
+final boundaryAnalysisForMessageProvider = FutureProvider.family<BoundaryAnalysis?, String>((ref, messageId) async {
+  // Placeholder - integrate with boundary detection from backend
+  return null;
 });
 
-/// Provider for Context Preloader Service (Phase 3)
-final contextPreloaderServiceProvider = Provider<ContextPreloaderService>((ref) {
-  return ContextPreloaderService();
+/// Generate action item details for a specific action
+/// Used to populate the peek zone with action tracking information
+/// 
+/// TODO: Integrate with backend action item service
+final actionItemDetailsProvider = FutureProvider.family<ActionItemDetails?, String>((ref, actionId) async {
+  // Placeholder - integrate with action items from backend
+  return null;
 });
 
-/// Provider to fetch relationship profile for a conversation
-final relationshipProfileProvider = FutureProvider.family<RelationshipProfile?, String>(
-  (ref, conversationId) async {
-    final service = ref.watch(relationshipServiceProvider);
-    return await service.getProfile(conversationId);
-  },
-);
-
-/// Provider to generate/refresh relationship summary
-/// This is a manual trigger - call ref.refresh(generateRelationshipSummaryProvider(conversationId))
-final generateRelationshipSummaryProvider = FutureProvider.family<RelationshipProfile, String>(
-  (ref, conversationId) async {
-    final service = ref.watch(relationshipSummaryServiceProvider);
-    return await service.generateSummary(conversationId: conversationId);
-  },
-);
-
-// =============================================================================
-// PHASE 4: Smart Follow-up System Providers
-// =============================================================================
-
-/// Provider for Follow-Up Service (Phase 4)
-final followUpServiceProvider = Provider<FollowUpService>((ref) {
-  return FollowUpService();
-});
-
-/// Provider to get all pending follow-ups for the user
-final pendingFollowUpsProvider = FutureProvider<List<FollowUpItem>>((ref) async {
-  final service = ref.watch(followUpServiceProvider);
-  return await service.getPendingFollowUps();
-});
-
-/// Provider to get follow-ups for a specific conversation
-final conversationFollowUpsProvider = FutureProvider.family<List<FollowUpItem>, String>(
-  (ref, conversationId) async {
-    final service = ref.watch(followUpServiceProvider);
-    return await service.getConversationFollowUps(conversationId);
-  },
-);
-
-/// State notifier for managing follow-up extraction
-class FollowUpExtractionNotifier extends StateNotifier<AsyncValue<void>> {
-  final FollowUpService _service;
-
-  FollowUpExtractionNotifier(this._service) : super(const AsyncValue.data(null));
-
-  /// Extract follow-ups from a conversation
-  Future<void> extractFollowUps(String conversationId, {bool scanAll = false}) async {
-    state = const AsyncValue.loading();
+/// Get relationship context for a specific participant
+/// Default content shown when no interventions are active (80% PEEK mode)
+/// 
+/// TODO: Implement by fetching participant patterns and reliability data
+final relationshipContextForParticipantProvider = FutureProvider.family<RelationshipContextPeek?, String>(
+  (ref, participantId) async {
+    // Placeholder - integrate with participant communication patterns
+    // This should fetch:
+    // - Tone analysis over recent messages
+    // - Response time statistics
+    // - Reliability/follow-through score
+    // - Boundary violation history
     
-    try {
-      await _service.extractFollowUps(conversationId, scanAll: scanAll);
-      state = const AsyncValue.data(null);
-    } catch (error, stackTrace) {
-      state = AsyncValue.error(error, stackTrace);
-    }
-  }
-}
-
-/// Provider for follow-up extraction (manual trigger)
-final followUpExtractionProvider = StateNotifierProvider<FollowUpExtractionNotifier, AsyncValue<void>>(
-  (ref) {
-    final service = ref.watch(followUpServiceProvider);
-    return FollowUpExtractionNotifier(service);
+    return null;
   },
 );

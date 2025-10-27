@@ -1,17 +1,22 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart'; // For kDebugMode
 import 'package:messageai/services/message_service.dart';
 import 'package:messageai/services/conversation_service.dart';
 import 'package:messageai/services/presence_service.dart';
 import 'package:messageai/services/realtime_message_service.dart';
 import 'package:messageai/services/typing_indicator_service.dart';
-import 'package:messageai/services/context_preloader_service.dart';
 import 'package:messageai/data/drift/app_db.dart';
 import 'package:messageai/data/remote/supabase_client.dart';
 import 'package:messageai/features/messages/widgets/message_list_panel.dart';
-import 'package:messageai/features/messages/widgets/context_panel.dart';
-import 'package:messageai/models/conversation_context.dart';
+import 'package:messageai/features/messages/widgets/peek_zone/ai_insights_background.dart';
+import 'package:messageai/features/messages/widgets/peek_zone/dynamic_peek_zone.dart';
+import 'package:messageai/features/messages/widgets/peek_zone/height_controller.dart';
+import 'package:messageai/features/messages/widgets/test_menu_fab.dart';
+import 'package:messageai/models/peek_content.dart';
 import 'package:messageai/core/theme/app_theme.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:async';
 
@@ -20,10 +25,10 @@ class MessageScreen extends StatefulWidget {
   final String conversationTitle;
 
   const MessageScreen({
-    Key? key,
+    super.key,
     required this.conversationId,
     required this.conversationTitle,
-  }) : super(key: key);
+  });
 
   @override
   State<MessageScreen> createState() => _MessageScreenState();
@@ -35,27 +40,55 @@ class _MessageScreenState extends State<MessageScreen> {
   final _presenceService = PresenceService();
   final _realtimeService = RealTimeMessageService();
   final _typingService = TypingIndicatorService();
-  final _contextService = ContextPreloaderService();
   final _receiptDao = AppDb.instance.receiptDao;
   final _messageController = TextEditingController();
   final _imagePicker = ImagePicker();
   late Future<List<Message>> _messagesFuture;
   late Future<List<Participant>> _participantsFuture;
+  late HeightController _heightController;
   bool _isSending = false;
   bool _isUploadingImage = false;
   String? _currentUserId;
-  Map<String, List<Receipt>> _receiptsCache = {};
+  final Map<String, List<Receipt>> _receiptsCache = {};
   Set<String> _typingUsers = {};
   Timer? _typingTimer;
+  Timer? _pollTimer;
+  Timer? _presenceCheckTimer;
   XFile? _selectedImage;
+  PlatformFile? _selectedFile;
   Set<String> _onlineUsers = {};
-  double _panelPosition = 0.8; // Track sliding panel position (0.0 = down, 1.0 = up)
-  ConversationContext? _conversationContext;
+  
+  // Real-time subscriptions (stored to prevent garbage collection)
+  StreamSubscription<List<Message>>? _messagesSubscription;
+  StreamSubscription<List<Receipt>>? _receiptsSubscription;
+  StreamSubscription<Set<String>>? _typingSubscription;
 
   @override
   void initState() {
     super.initState();
+    
+    // Get current user first
     _currentUserId = _messageService.getCurrentUserId();
+    
+    // Create fallback default content immediately
+    final fallbackContent = RelationshipContextPeek(
+      sender: const Participant(
+        id: '',
+        conversationId: '',
+        userId: 'Loading...',
+        joinedAt: 0,
+        isAdmin: false,
+        isSynced: false,
+      ),
+      relationship: 'Contact',
+      communicationStyle: 'Analyzing patterns...',
+      lastMessage: 'Recently',
+      reliabilityScore: 0.0,
+    );
+    
+    // Initialize HeightController with fallback content
+    _heightController = HeightController(defaultContent: fallbackContent);
+    print('✅ [SCREEN] HeightController initialized with fallback content');
     
     // Sync messages from backend first, then load
     _messagesFuture = _messageService.getMessagesByConversation(
@@ -70,15 +103,11 @@ class _MessageScreenState extends State<MessageScreen> {
     // Load receipts
     _loadReceipts();
     
-    // Load conversation context
+    // Load conversation context (will update HeightController with real data)
     _loadContext();
     
     // Mark messages as read when opening conversation
     _messagesFuture.then((_) => _markMessagesAsRead());
-    
-    // 🗑️ REMOVED: Auto-analysis should NOT run automatically
-    // Analysis is now ONLY triggered by user manually long-pressing a message
-    // (See MessageBubble widget for manual trigger)
     
     // Listen for text changes to send typing indicators
     _messageController.addListener(_onTextChanged);
@@ -86,14 +115,35 @@ class _MessageScreenState extends State<MessageScreen> {
 
   Future<void> _loadContext() async {
     try {
-      final context = await _contextService.loadContext(widget.conversationId);
-      if (mounted) {
-        setState(() {
-          _conversationContext = context;
-        });
+      print('🔄 [SCREEN] Loading context for conversation: ${widget.conversationId}');
+      
+      // Load participants and set up default relationship context for peek zone
+      try {
+        final participants = await _participantsFuture;
+        if (participants.isNotEmpty && mounted) {
+          // Get the first participant (other than current user) as the primary contact
+          final contact = participants.firstWhere(
+            (p) => p.userId != _currentUserId,
+            orElse: () => participants.first,
+          );
+          
+          // Create default relationship context for peek zone
+          final relationshipContent = RelationshipContextPeek(
+            sender: contact,
+            relationship: 'Contact', // Default, would be enhanced with real data
+            communicationStyle: 'Loading patterns...',
+            lastMessage: 'Recently',
+            reliabilityScore: 80.0, // Default, would be calculated from history
+          );
+          
+          _heightController.setDefaultContent(relationshipContent);
+          print('✅ [SCREEN] Peek Zone content updated for: ${contact.userId}');
+        }
+      } catch (e) {
+        print('⚠️ [SCREEN] Could not load participants for peek zone: $e');
       }
     } catch (e) {
-      print('Error loading context: $e');
+      print('❌ [SCREEN] Error loading context: $e');
     }
   }
 
@@ -194,15 +244,12 @@ class _MessageScreenState extends State<MessageScreen> {
     }
   }
 
-  Timer? _pollTimer;
-  Timer? _presenceCheckTimer;
-
-  Future<void> _initializeRealtime() async {
+  void _initializeRealtime() {
     try {
-      // Subscribe to presence updates
-      await _presenceService.subscribeToPresence(widget.conversationId);
-      // Set current user as online
-      await _presenceService.setPresenceStatus(widget.conversationId, true);
+      print('🔔 Initializing real-time features...');
+      
+      // Subscribe to presence
+      _presenceService.setPresenceStatus(widget.conversationId, true);
       
       // Poll presence status every 2 seconds to update UI
       _presenceCheckTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
@@ -213,35 +260,38 @@ class _MessageScreenState extends State<MessageScreen> {
         }
       });
       
-      // Subscribe to real-time messages
-      _realtimeService.subscribeToMessages(widget.conversationId).listen((messages) {
-        setState(() {
-          _messagesFuture = Future.value(messages);
-        });
-        _loadReceipts();
-        _markMessagesAsRead(); // Mark new messages as read
+      // Subscribe to real-time messages and STORE THE SUBSCRIPTION
+      _messagesSubscription = _realtimeService.subscribeToMessages(widget.conversationId).listen((messages) {
+        if (mounted) {
+          _loadReceipts();
+          _markMessagesAsRead(); // Mark new messages as read
+        }
       });
       
-      // Subscribe to real-time receipts
-      _realtimeService.subscribeToReceipts(widget.conversationId).listen((receipts) {
-        print('📬 Receipt update: ${receipts.length} total receipts');
-        setState(() {
-          _receiptsCache.clear();
-          for (final receipt in receipts) {
-            if (!_receiptsCache.containsKey(receipt.messageId)) {
-              _receiptsCache[receipt.messageId] = [];
+      // Subscribe to real-time receipts and STORE THE SUBSCRIPTION
+      _receiptsSubscription = _realtimeService.subscribeToReceipts(widget.conversationId).listen((receipts) {
+        if (mounted) {
+          print('📬 Receipt update: ${receipts.length} total receipts');
+          setState(() {
+            _receiptsCache.clear();
+            for (final receipt in receipts) {
+              if (!_receiptsCache.containsKey(receipt.messageId)) {
+                _receiptsCache[receipt.messageId] = [];
+              }
+              _receiptsCache[receipt.messageId]!.add(receipt);
+              print('   - Message ${receipt.messageId.substring(0, 8)}: ${receipt.status} by ${receipt.userId.substring(0, 8)}');
             }
-            _receiptsCache[receipt.messageId]!.add(receipt);
-            print('   - Message ${receipt.messageId.substring(0, 8)}: ${receipt.status} by ${receipt.userId.substring(0, 8)}');
-          }
-        });
+          });
+        }
       });
       
-      // Subscribe to typing indicators
-      _typingService.subscribeToTyping(widget.conversationId).listen((typingUserIds) {
-        setState(() {
-          _typingUsers = typingUserIds;
-        });
+      // Subscribe to typing indicators and STORE THE SUBSCRIPTION
+      _typingSubscription = _typingService.subscribeToTyping(widget.conversationId).listen((typingUserIds) {
+        if (mounted) {
+          setState(() {
+            _typingUsers = typingUserIds;
+          });
+        }
       });
     } catch (e) {
       print('❌ Realtime init failed: $e');
@@ -252,16 +302,28 @@ class _MessageScreenState extends State<MessageScreen> {
   void dispose() {
     _messageController.removeListener(_onTextChanged);
     _messageController.dispose();
+    
+    // Cancel all timers
     _typingTimer?.cancel();
     _pollTimer?.cancel();
     _presenceCheckTimer?.cancel();
+    
     // Set user as offline before leaving
     _presenceService.setPresenceStatus(widget.conversationId, false);
-    // Clean up realtime subscriptions
+    
+    // Cancel all real-time subscriptions
     _presenceService.unsubscribeFromPresence(widget.conversationId);
+    _messagesSubscription?.cancel();
+    _receiptsSubscription?.cancel();
+    _typingSubscription?.cancel();
+    
+    // Clean up realtime services
     _realtimeService.unsubscribeFromMessages(widget.conversationId);
     _realtimeService.unsubscribeFromReceipts(widget.conversationId);
     _typingService.unsubscribeFromTyping(widget.conversationId);
+    
+    // Dispose HeightController
+    _heightController.dispose();
     super.dispose();
   }
 
@@ -295,12 +357,35 @@ class _MessageScreenState extends State<MessageScreen> {
       if (image != null) {
         setState(() {
           _selectedImage = image;
+          _selectedFile = null; // Clear any selected file
         });
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error picking image: $e')),
+        );
+      }
+    }
+  }
+  
+  Future<void> _pickFile() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'doc', 'docx', 'txt', 'xls', 'xlsx', 'ppt', 'pptx'],
+      );
+      
+      if (result != null && result.files.isNotEmpty) {
+        setState(() {
+          _selectedFile = result.files.first;
+          _selectedImage = null; // Clear any selected image
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error picking file: $e')),
         );
       }
     }
@@ -339,20 +424,59 @@ class _MessageScreenState extends State<MessageScreen> {
       }
     }
   }
+  
+  Future<String?> _uploadFile(PlatformFile file) async {
+    setState(() => _isUploadingImage = true);
+    
+    try {
+      final userId = SupabaseClientProvider.client.auth.currentUser?.id;
+      if (userId == null) throw Exception('User not authenticated');
+      
+      final fileBytes = Uint8List.fromList(file.bytes ?? []);
+      if (fileBytes.isEmpty) throw Exception('File is empty');
+      
+      final fileName = '${DateTime.now().millisecondsSinceEpoch}_${file.name}';
+      final path = '$userId/files/$fileName';
+      
+      await SupabaseClientProvider.client.storage
+          .from('media')
+          .uploadBinary(path, fileBytes);
+      
+      final url = SupabaseClientProvider.client.storage
+          .from('media')
+          .getPublicUrl(path);
+      
+      return url;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error uploading file: $e')),
+        );
+      }
+      return null;
+    } finally {
+      if (mounted) {
+        setState(() => _isUploadingImage = false);
+      }
+    }
+  }
 
   Future<void> _sendMessage() async {
     final messageText = _messageController.text.trim();
     final hasText = messageText.isNotEmpty;
     final hasImage = _selectedImage != null;
+    final hasFile = _selectedFile != null;
     
-    if (!hasText && !hasImage) return;
+    if (!hasText && !hasImage && !hasFile) return;
     if (_isSending || _isUploadingImage) return;
 
     // Clear input immediately for better UX
     _messageController.clear();
     final imageToSend = _selectedImage;
+    final fileToSend = _selectedFile;
     setState(() {
       _selectedImage = null;
+      _selectedFile = null;
     });
     
     // Stop typing indicator when message is sent
@@ -363,6 +487,7 @@ class _MessageScreenState extends State<MessageScreen> {
 
     try {
       String? mediaUrl;
+      String displayText = messageText;
       
       // Upload image if present
       if (imageToSend != null) {
@@ -370,11 +495,24 @@ class _MessageScreenState extends State<MessageScreen> {
         if (mediaUrl == null) {
           throw Exception('Failed to upload image');
         }
+        if (!hasText) displayText = '📷 Photo';
+      }
+      
+      // Upload file if present
+      if (fileToSend != null) {
+        mediaUrl = await _uploadFile(fileToSend);
+        if (mediaUrl == null) {
+          throw Exception('Failed to upload file');
+        }
+        if (!hasText) {
+          final extension = fileToSend.extension?.toUpperCase() ?? 'FILE';
+          displayText = '📎 $extension File: ${fileToSend.name}';
+        }
       }
       
       await _messageService.sendMessage(
         conversationId: widget.conversationId,
-        body: hasText ? messageText : '📷 Photo',
+        body: displayText,
         mediaUrl: mediaUrl,
       );
 
@@ -395,6 +533,11 @@ class _MessageScreenState extends State<MessageScreen> {
             _selectedImage = imageToSend;
           });
         }
+        if (fileToSend != null) {
+          setState(() {
+            _selectedFile = fileToSend;
+          });
+        }
       }
     } finally {
       if (mounted) {
@@ -409,251 +552,202 @@ class _MessageScreenState extends State<MessageScreen> {
     final isDark = theme.brightness == Brightness.dark;
     
     return WillPopScope(
-      // 🔧 Always allow back navigation, even during analysis
       onWillPop: () async {
         Navigator.of(context).pop();
-        return false; // We handle the pop manually
+        return false;
       },
       child: Scaffold(
         backgroundColor: isDark ? AppTheme.darkGray200 : AppTheme.gray50,
-        appBar: AppBar(
-          title: Row(
+        appBar: _buildAppBar(),
+        body: SafeArea(
+          top: false,  // Let AppBar handle top safe area
+          child: DynamicPeekZone(
+            heightController: _heightController,
+            conversationId: widget.conversationId,
+            backgroundBuilder: (context, currentMode, currentContent) {
+              return AIInsightsBackground(
+                conversationId: widget.conversationId,
+                heightController: _heightController,
+              );
+            },
+            messagePanel: _buildMessageList(),
+            composeBar: _buildComposeBar(),
+            // onHeightChanged disabled to avoid per-frame logging
+
+            onViewModeChanged: (mode) {
+              print('🎯 View mode: ${mode.name}');
+            },
+          ),
+        ),
+        // Test menu FAB (always visible for demo purposes)
+        floatingActionButton: TestMenuFab(
+          conversationId: widget.conversationId,
+          onMessageSent: _refreshMessages,
+        ),
+      ),
+    );
+  }
+
+  /// Refresh messages after test data is loaded
+  void _refreshMessages() {
+    setState(() {
+      _messagesFuture = _messageService.getMessagesByConversation(
+        widget.conversationId,
+        syncFirst: false,
+      );
+    });
+  }
+
+  PreferredSizeWidget _buildAppBar() {
+    return AppBar(
+      toolbarHeight: 40,  // MUCH smaller - 40px instead of 56px
+      titleSpacing: 4,
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back, size: 20),
+        onPressed: () => Navigator.of(context).pop(),
+        padding: const EdgeInsets.all(8),
+        constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+      ),
+      title: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Much smaller avatar with online indicator
+          Stack(
+            clipBehavior: Clip.none,
             children: [
-              Stack(
-                children: [
-                  CircleAvatar(
-                    radius: 18,
-                    backgroundColor: Colors.grey[300],
-                    child: Icon(
-                      Icons.group,
-                      size: 20,
-                      color: Colors.grey[700],
+              CircleAvatar(
+                radius: 12,
+                backgroundColor: Colors.grey[300],
+                child: Icon(Icons.group, size: 14, color: Colors.grey[700]),
+              ),
+              if (_onlineUsers.isNotEmpty)
+                Positioned(
+                  right: -2,
+                  top: -2,
+                  child: Container(
+                    padding: const EdgeInsets.all(3),
+                    decoration: BoxDecoration(
+                      color: Colors.green,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 1.5),
+                    ),
+                    child: Text(
+                      '${_onlineUsers.length}',
+                      style: const TextStyle(
+                        fontSize: 8,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        height: 1,
+                      ),
                     ),
                   ),
-                  if (_onlineUsers.isNotEmpty)
-                    Positioned(
-                      right: 0,
-                      bottom: 0,
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: Colors.green,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2),
-                        ),
-                        child: Text(
-                          '${_onlineUsers.length}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      widget.conversationTitle,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    if (_onlineUsers.isNotEmpty)
-                      Text(
-                        '${_onlineUsers.length} online',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.white.withOpacity(0.8),
-                        ),
-                      ),
-                  ],
                 ),
-              ),
             ],
           ),
-          elevation: 1,
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.person_add),
-              onPressed: _showAddParticipantsDialog,
-              tooltip: 'Add participants',
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              widget.conversationTitle,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-            IconButton(
-              icon: const Icon(Icons.more_vert),
-              onPressed: () => _showParticipantsInfo(context),
-              tooltip: 'Options',
-            ),
-          ],
+          ),
+        ],
+      ),
+      elevation: 0.5,
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.person_add, size: 18),
+          onPressed: _showAddParticipantsDialog,
+          padding: const EdgeInsets.all(8),
+          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
         ),
-        body: FutureBuilder<List<Message>>(
-          future: _messagesFuture,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
+        IconButton(
+          icon: const Icon(Icons.more_vert, size: 18),
+          onPressed: () => _showParticipantsInfo(context),
+          padding: const EdgeInsets.all(8),
+          constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+        ),
+      ],
+    );
+  }
 
-            if (snapshot.hasError) {
-              return Center(
-                child: Text(
-                  'Error: ${snapshot.error}',
-                  style: theme.textTheme.bodyMedium,
-                ),
+  Widget _buildMessageList() {
+    return FutureBuilder<List<Message>>(
+      future: _messagesFuture,
+      builder: (context, futureSnapshot) {
+        // Once initial messages are loaded, listen to real-time updates
+        if (futureSnapshot.connectionState == ConnectionState.done) {
+          return StreamBuilder<List<Message>>(
+            stream: _realtimeService.subscribeToMessages(widget.conversationId),
+            initialData: futureSnapshot.data ?? [],
+            builder: (context, streamSnapshot) {
+              final messages = streamSnapshot.data ?? [];
+
+              return MessageListPanel(
+                messages: messages,
+                currentUserId: _currentUserId,
+                receiptsCache: _receiptsCache,
+                typingUsers: _typingUsers,
+                onlineUsers: _onlineUsers,
+                messageController: _messageController,
+                isSending: _isSending,
+                isUploadingImage: _isUploadingImage,
+                selectedImage: _selectedImage,
+                selectedFile: _selectedFile,
+                onSendMessage: _sendMessage,
+                onPickImage: _pickImage,
+                onPickFile: _pickFile,
+                onClearImage: () {
+                  setState(() {
+                    _selectedImage = null;
+                    _selectedFile = null;
+                  });
+                },
+                showComposeBar: false,
+                heightController: _heightController,
               );
-            }
+            },
+          );
+        } else {
+          // Show loading while fetching initial messages
+          return const Center(child: CircularProgressIndicator());
+        }
+      },
+    );
+  }
 
-            final messages = snapshot.data ?? [];
-
-            return Column(
-              children: [
-                // Context Panel at top - shows relationship context
-                ContextPanel(
-                  conversationId: widget.conversationId,
-                  context: _conversationContext,
-                ),
-                
-                // Main area: Message list with sliding overlay
-                Expanded(
-                  child: Stack(
-                    children: [
-                      // Background: Message list
-                      Container(
-                        color: Theme.of(context).brightness == Brightness.dark 
-                          ? AppTheme.darkGray200 
-                          : AppTheme.gray50,
-                        child: CustomScrollView(
-                          slivers: [
-                            SliverFillRemaining(
-                              child: Container(),
-                            ),
-                          ],
-                        ),
-                      ),
-                      
-                      // Foreground: Sliding message panel (bottom fixed, top slides)
-                      Align(
-                        alignment: Alignment.bottomCenter,
-                        child: GestureDetector(
-                          onVerticalDragUpdate: (details) {
-                            setState(() {
-                              // Convert drag to panel height (inverted - drag down = smaller)
-                              final screenHeight = MediaQuery.of(context).size.height;
-                              final delta = -details.delta.dy / screenHeight;
-                              _panelPosition = (_panelPosition + delta).clamp(0.12, 1.0);
-                            });
-                          },
-                          onVerticalDragEnd: (details) {
-                            // Snap to nearest position
-                            setState(() {
-                              if (_panelPosition < 0.18) {
-                                _panelPosition = 0.12; // Minimized - just input + handle
-                              } else if (_panelPosition < 0.4) {
-                                _panelPosition = 0.3; // Small peek
-                              } else if (_panelPosition < 0.65) {
-                                _panelPosition = 0.5; // Half
-                              } else if (_panelPosition < 0.9) {
-                                _panelPosition = 0.85; // Most
-                              } else {
-                                _panelPosition = 1.0; // Full
-                              }
-                            });
-                          },
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 200),
-                            curve: Curves.easeOut,
-                            height: MediaQuery.of(context).size.height * _panelPosition,
-                            width: double.infinity,
-                            decoration: BoxDecoration(
-                              color: isDark ? AppTheme.black : AppTheme.white,
-                              borderRadius: const BorderRadius.only(
-                                topLeft: Radius.circular(16),
-                                topRight: Radius.circular(16),
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.3),
-                                  blurRadius: 20,
-                                  spreadRadius: 5,
-                                  offset: const Offset(0, -5),
-                                ),
-                              ],
-                            ),
-                            child: Column(
-                              children: [
-                                // Drag handle at TOP
-                                InkWell(
-                                  onTap: () {
-                                    setState(() {
-                                      // Cycle through positions
-                                      if (_panelPosition >= 1.0) {
-                                        _panelPosition = 0.85; // Most
-                                      } else if (_panelPosition >= 0.85) {
-                                        _panelPosition = 0.5; // Half
-                                      } else if (_panelPosition >= 0.5) {
-                                        _panelPosition = 0.3; // Peek
-                                      } else if (_panelPosition >= 0.3) {
-                                        _panelPosition = 0.12; // Minimized
-                                      } else {
-                                        _panelPosition = 1.0; // Full
-                                      }
-                                    });
-                                  },
-                                  child: Container(
-                                    width: double.infinity,
-                                    padding: const EdgeInsets.symmetric(vertical: AppTheme.spacingM),
-                                    child: Center(
-                                      child: Container(
-                                        width: 40,
-                                        height: 5,
-                                        decoration: BoxDecoration(
-                                          color: isDark ? AppTheme.gray600 : AppTheme.gray400,
-                                          borderRadius: BorderRadius.circular(AppTheme.radiusPill),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                
-                                // Message list
-                                Expanded(
-                                  child: MessageListPanel(
-                                    messages: messages,
-                                    currentUserId: _currentUserId,
-                                    receiptsCache: _receiptsCache,
-                                    typingUsers: _typingUsers,
-                                    onlineUsers: _onlineUsers,
-                                    messageController: _messageController,
-                                    isSending: _isSending,
-                                    isUploadingImage: _isUploadingImage,
-                                    selectedImage: _selectedImage,
-                                    onSendMessage: _sendMessage,
-                                    onPickImage: _pickImage,
-                                    onClearImage: () {
-                                      setState(() {
-                                        _selectedImage = null;
-                                      });
-                                    },
-                                    showComposeBar: true,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            );
-          },
+  Widget _buildComposeBar() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        border: Border(
+          top: BorderSide(color: Colors.grey.withOpacity(0.2)),
         ),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            icon: const Icon(Icons.add),
+            onPressed: _pickImage,
+          ),
+          Expanded(
+            child: TextField(
+              controller: _messageController,
+              decoration: const InputDecoration(
+                hintText: 'Message',
+                border: InputBorder.none,
+              ),
+              maxLines: null,
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.send),
+            onPressed: _sendMessage,
+          ),
+        ],
       ),
     );
   }
@@ -899,3 +993,5 @@ class _MessageScreenState extends State<MessageScreen> {
   }
 
 }
+
+
